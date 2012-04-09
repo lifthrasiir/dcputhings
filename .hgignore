@@ -1,0 +1,8 @@
+syntax: glob
+.git
+*.cmi
+*.cmo
+a.out
+dcpu
+dcpuopt
+dcpuasmexample
