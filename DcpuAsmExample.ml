@@ -1,4 +1,4 @@
-(* dcputhings: Assorted Tools for DCPU-16 Assembly.
+(* dcputhings: Assorted Tools for DCPU-16 Development.
  * Written by Kang Seonghoon. See LICENSE for the full license statement.
  *)
 
@@ -306,8 +306,11 @@ hexdump_asm "Macro facility" [
 (* Some other examples. *)
 
 hexdump_asm "Shortcuts" [
+    NOP;                        (* same as SET A, A; *)
     JMP %next;                  (* same as SET PC, %next; *)
 %next:
+    JMP %_+5;                   (* a pseudolabel for the current PC *)
+    DAT 1, 2, 3, 4;
     PUSH A;                     (* same as SET PUSH, A; *)
     SET B, [SP];                (* same as SET B, PEEK; *)
     POP C;                      (* same as SET C, POP; *)
@@ -344,12 +347,18 @@ hexdump_asm "Immediate expressions" [
 %datend:
 ];;
 
-hexdump_asm ~origin:0x0136 "LONG immediates, non-zero origin" [
+hexdump_asm ~origin:0x0136 "SHORT/LONG immediates, non-zero origin" [
 %code:
-    SET A, LONG 3;              (* while 3 fits in a value, it will emit
+    SET A, LONG 3 + 4;          (* while 7 fits in a value, it will emit
                                  * an additional word as requested. *)
-    SET [%code], 3;             (* this will not emit an additional word. *)
+    SET [%code], 3 + 4;         (* this will not emit an additional word. *)
     SET A, LONG %code;          (* if the immediate does not fit in a value
                                  * LONG is redundant. *)
+    SET A, SHORT %_ - 286;      (* this will cause an error if the operand
+                                 * does not fit in 0--31 range. *)
+    SET A, SHORT %_ - 286;
+    (*
+    SET A, SHORT %_ - 286;      (* this one will err when uncommented. *)
+    *)
 ];;
 

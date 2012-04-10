@@ -1,4 +1,4 @@
-(* dcputhings: Assorted Tools for DCPU-16 Assembly.
+(* dcputhings: Assorted Tools for DCPU-16 Development.
  * Written by Kang Seonghoon. See LICENSE for the full license statement.
  *)
 
@@ -53,6 +53,8 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         [
             [ label = a_LIDENT ->
               <:expr< DcpuAsm.AsmExpr__.label $str:label$ >>
+            | "_" ->
+              <:expr< DcpuAsm.AsmExpr__.label "_" >>
             | "#"; e = expr LEVEL "simple" ->
               <:expr< DcpuAsm.AsmExpr__.label $e$ >>
             ]
@@ -66,6 +68,7 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         asmlabelstr:
         [
             [ "%"; l = a_LIDENT -> <:expr< $str:l$ >>
+            | "%"; "_" -> raise (Stream.Error "%_ cannot be defined")
             | "%"; "#"; e = expr LEVEL "simple" -> <:expr< $e$ >>
             ]
         ];
@@ -92,6 +95,9 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
 
         asmexpr0: (* same as asmexpr but assumes that it starts with % *)
         [
+            "top"
+            [] (* level is present, but no rule matches here *)
+        |
             "+" LEFTA
             [ e1 = SELF; "+"; e2 = asmexpr LEVEL "*" ->
               <:expr< DcpuAsm.AsmExpr__.add $e1$ $e2$ >>
@@ -140,6 +146,11 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
 
         asmexpr:
         [
+            "top" NONA
+            [ "LONG"; e = asmexpr -> <:expr< DcpuAsm.AsmExpr__.long $e$ >>
+            | "SHORT"; e = asmexpr -> <:expr< DcpuAsm.AsmExpr__.short $e$ >>
+            ]
+        |
             "+" LEFTA
             [ e1 = SELF; "+"; e2 = asmexpr LEVEL "*" ->
               <:expr< DcpuAsm.AsmExpr__.add $e1$ $e2$ >>
@@ -218,7 +229,6 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
               <:expr< DcpuAsm.AsmExpr__.mem $e$ >>
             | "IMM"; "("; e = asmexpr LEVEL "+"; ")" -> <:expr< $e$ >>
             | "IMM"; "(%"; e = asmexpr0 LEVEL "+"; ")" -> <:expr< $e$ >>
-            | "LONG"; e = asmexpr -> <:expr< DcpuAsm.AsmExpr__.long $e$ >>
             ]
         ];
 
@@ -282,9 +292,10 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
             (* various helpers *)
             | "PASS" ->
               <:expr< DcpuAsm.Asm__.block [] >>
+            | "NOP" ->
+              <:expr< DcpuAsm.Asm__.nop >>
             | "JMP"; a = asmoperand ->
-              <:expr< DcpuAsm.Asm__.set (DcpuAsm.AsmExpr__.reg DcpuAsm.PC)
-                                        $a$ >>
+              <:expr< DcpuAsm.Asm__.jmp $a$ >>
             | "PUSH"; a = asmoperand ->
               <:expr< DcpuAsm.Asm__.set DcpuAsm.AsmExpr__.push $a$ >>
             | "POP"; a = asmoperand ->

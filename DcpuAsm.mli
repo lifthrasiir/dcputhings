@@ -1,4 +1,4 @@
-(* dcputhings: Assorted Tools for DCPU-16 Assembly.
+(* dcputhings: Assorted Tools for DCPU-16 Development.
  * Written by Kang Seonghoon. See LICENSE for the full license statement.
  *)
 
@@ -11,6 +11,9 @@ type label = string
 
 val string_of_reg : reg -> string
 val index_of_reg : reg -> int
+
+(* generates unique labels with a given prefix. *)
+val gensym : string -> unit -> label
 
 type expr =
     | ENum of int
@@ -41,6 +44,7 @@ type value =
     | Next
     | MemLit of expr
     | Lit of expr
+    | LitShort of expr
     | LitLong of expr
 
 val string_of_value : value -> string
@@ -76,6 +80,7 @@ type asmexpr (* opaque *)
 module AsmExpr__ : sig
     val imm   : int -> asmexpr
     val long  : asmexpr -> asmexpr
+    val short : asmexpr -> asmexpr
     val str   : string -> asmexpr
     val reg   : reg -> asmexpr
     val push  : asmexpr
@@ -97,7 +102,7 @@ module AsmExpr__ : sig
     val shr   : asmexpr -> asmexpr -> asmexpr
 end
 
-val parse_asmexpr : asmexpr -> value
+val parse_asmexpr : asmexpr -> value * label option
 
 (**********************************************************************)
 (* Assembly Statements. (e.g. SUB SP, 1) *)
@@ -110,9 +115,6 @@ type stmt =
     | Blocked of stmt list
 
 val print_stmt : stmt -> unit
-
-(* generates unique labels with a given prefix. *)
-val gensym : string -> unit -> label
 
 (* internal code generator for pa_dcpuasm *)
 module Asm__ : sig
@@ -133,6 +135,8 @@ module Asm__ : sig
     val ifg   : asmexpr -> asmexpr -> stmt
     val ifb   : asmexpr -> asmexpr -> stmt
     val jsr   : asmexpr -> stmt
+    val nop   : stmt
+    val jmp   : asmexpr -> stmt
     val label : string -> stmt -> stmt
     val block : stmt list -> stmt
 end

@@ -1,6 +1,7 @@
 .hg
 *.cmi
 *.cmo
+dcpuopt-cases.h
 a.out
 dcpu
 dcpuopt

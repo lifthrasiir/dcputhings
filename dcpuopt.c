@@ -1,3 +1,8 @@
+/*
+DCPU-16 emulator in C. Marginally inefficient.
+Written by Kang Seonghoon (http://mearie.org/, @senokay). Public Domain.
+*/
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>

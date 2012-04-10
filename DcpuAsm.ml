@@ -1,4 +1,4 @@
-(* dcputhings: Assorted Tools for DCPU-16 Assembly.
+(* dcputhings: Assorted Tools for DCPU-16 Development.
  * Written by Kang Seonghoon. See LICENSE for the full license statement.
  *)
 
@@ -15,6 +15,11 @@ let string_of_reg = function
 let index_of_reg = function
     | A -> 0 | B -> 1 | C -> 2 | X -> 3 | Y -> 4 | Z -> 5 | I -> 6 | J -> 7
     | PC | SP | O -> failwith "index_of_reg"
+
+let gensym prefix =
+    let counter = ref (-1) in
+    let prefix = prefix ^ "(" in
+    function () -> incr counter; prefix ^ string_of_int !counter ^ ")"
 
 (* an expression which will be eventually resolved to a single immediate. *)
 type expr =
@@ -132,6 +137,7 @@ type value =
     | Next
     | MemLit of expr
     | Lit of expr
+    | LitShort of expr
     | LitLong of expr
 
 let string_of_value = function
@@ -154,8 +160,14 @@ let string_of_value = function
     | MemLit e -> "[" ^ string_of_expr e ^ "]"
     | Lit (ENum v) -> string_of_int (v land 0xffff)
     | Lit e -> string_of_expr e
+    | LitShort (ENum v) -> "SHORT " ^ string_of_int (v land 0xffff)
+    | LitShort e -> "SHORT " ^ string_of_expr e
     | LitLong (ENum v) -> "LONG " ^ string_of_int (v land 0xffff)
     | LitLong e -> "LONG " ^ string_of_expr e
+
+let force_shorter_value = function
+    | Lit e -> LitShort e
+    | v -> v
 
 let force_longer_value = function
     | Lit e -> LitLong e
@@ -167,6 +179,7 @@ let rec eval_value resolve = function
         if e = ENum 0 then MemReg r else MemRegLit (r,e)
     | MemLit e -> MemLit (eval_expr resolve e)
     | Lit e -> Lit (eval_expr resolve e)
+    | LitShort e -> LitShort (eval_expr resolve e)
     | LitLong e -> LitLong (eval_expr resolve e)
     | v -> v
 
@@ -212,8 +225,7 @@ let string_of_instr = function
     | Ifb (a,b) -> "IFB " ^ string_of_value a ^ ", " ^ string_of_value b
     | Jsr a -> "JSR " ^ string_of_value a
 
-let force_longer_instr =
-    let force = force_longer_value in
+let force_instr force =
     function
     | Dat e -> Dat e
     | DatStr s -> DatStr s
@@ -233,6 +245,9 @@ let force_longer_instr =
     | Ifg (a,b) -> Ifg (force a, force b)
     | Ifb (a,b) -> Ifb (force a, force b)
     | Jsr a -> Jsr (force a)
+
+let force_shorter_instr = force_instr force_shorter_value
+let force_longer_instr = force_instr force_longer_value
 
 let rec eval_instr resolve =
     let eval = eval_value resolve in
@@ -261,6 +276,7 @@ let rec eval_instr resolve =
 
 type asmexpr =
     | AsmImm of int
+    | AsmShort of asmexpr
     | AsmLong of asmexpr
     | AsmStr of string
     | AsmReg of reg
@@ -284,6 +300,7 @@ type asmexpr =
 
 module AsmExpr__ = struct
     let imm v      = AsmImm v
+    let short e    = AsmShort e
     let long e     = AsmLong e
     let str s      = AsmStr s
     let reg r      = AsmReg r
@@ -306,7 +323,9 @@ module AsmExpr__ = struct
     let shr  e1 e2 = AsmShr (e1,e2)
 end
 
-let parse_asmexpr =
+let gen_selflabel = gensym "<self>"
+
+let parse_asmexpr e =
     let rescale k l =
         if k = 0 then [] else List.rev_map (fun (r,c) -> (r,c*k)) l in
 
@@ -324,14 +343,23 @@ let parse_asmexpr =
             in List.concat (List.rev_map gather [A;B;C;X;Y;Z;I;J;PC;SP;O])
     in
 
+    let selflabel = ref None in
+
     (* canonicalizes asmexpr: linear combination of registers plus
      * an immediate which may contain labels to be resolved later. *)
     let rec canonicalize = function
-        | AsmImm v -> ([], ENum v)
+        | AsmImm v -> ([], ENum v, false)
+        | AsmShort e -> canonicalize e
         | AsmLong e -> canonicalize e
         | AsmStr _ -> failwith "parse_asmexpr: unexpected string"
-        | AsmReg r -> ([(r,1)], ENum 0)
-        | AsmLabel l -> ([], ELabel l)
+        | AsmReg r -> ([(r,1)], ENum 0, false)
+        | AsmLabel "_" -> (* pseudolabel *)
+            let l =
+                match !selflabel with
+                | None -> let l' = gen_selflabel () in selflabel := Some l'; l'
+                | Some l' -> l'
+            in ([], ELabel l, true)
+        | AsmLabel l -> ([], ELabel l, false)
         | AsmMem e -> failwith "parse_asmexpr: nested memory reference"
         | AsmPop _ -> failwith "parse_asmexpr: unexpected POP"
         | AsmPeek _ -> failwith "parse_asmexpr: unexpected PEEK"
@@ -342,45 +370,48 @@ let parse_asmexpr =
          * of registers (so that [A*2-A+3] is permitted, for example). *)
 
         | AsmNeg e ->
-            let (regs, e) = canonicalize e in
-            let e' = match e with
-                | ENum v -> ENum (-v)
-                | e -> ENeg e
-            in (rescale (-1) regs, e')
+            let (regs, e, hasself) = canonicalize e in
+            let regs = rescale (-1) regs in
+            begin match e with
+            | ENum v -> (regs, ENum (-v), false)
+            | e      -> (regs, ENeg e, hasself)
+            end
 
         | AsmNot e ->
-            let (regs, e) = canonicalize e in
+            let (regs, e, hasself) = canonicalize e in
             if regs = [] then
                 begin match e with
-                | ENum v -> ([], ENum (lnot v))
-                | e -> ([], ENot e)
+                | ENum v -> ([], ENum (lnot v), false)
+                | e      -> ([], ENot e, hasself)
                 end
             else
                 failwith "parse_asmexpr: non-linear register"
 
         | AsmAdd (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
-            let e' = match e1, e2 with
-                | ENum v1, ENum v2 -> ENum (v1+v2)
-                | ENum 0, e2 -> e2
-                | e1, ENum 0 -> e1
-                | e1, e2 -> EAdd (e1, e2)
-            in (combine regs1 regs2, e')
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
+            let regs = combine regs1 regs2 in
+            begin match e1, e2 with
+            | ENum v1, ENum v2 -> (regs, ENum (v1+v2), false)
+            | ENum 0,  e2      -> (regs, e2, hasself2)
+            | e1,      ENum 0  -> (regs, e1, hasself1)
+            | e1,      e2      -> (regs, EAdd (e1, e2), hasself1 || hasself2)
+            end
 
         | AsmSub (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
-            let e' = match e1, e2 with
-                | ENum v1, ENum v2 -> ENum (v1-v2)
-                | ENum 0, e2 -> ENeg e2
-                | e1, ENum 0 -> e1
-                | e1, e2 -> ESub (e1, e2)
-            in (combine regs1 (rescale (-1) regs2), e')
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
+            let regs = combine regs1 (rescale (-1) regs2) in
+            begin match e1, e2 with
+            | ENum v1, ENum v2 -> (regs, ENum (v1-v2), false)
+            | ENum 0,  e2      -> (regs, ENeg e2, hasself2)
+            | e1,      ENum 0  -> (regs, e1, hasself1)
+            | e1,      e2      -> (regs, ESub (e1, e2), hasself1 || hasself2)
+            end
 
         | AsmMul (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
             begin match e1, e2 with
             | ENum v1, ENum v2 ->
                 let regs = match regs1, regs2 with
@@ -388,136 +419,143 @@ let parse_asmexpr =
                     | _,  [] -> rescale v2 regs1
                     | [], _  -> rescale v1 regs2
                     | _,  _  -> failwith "parse_asmexpr: non-linear register"
-                in (regs, ENum (v1*v2))
+                in (regs, ENum (v1*v2), false)
             | ENum v1, e2 ->
                 let regs = match regs1, regs2 with
                     | [], [] -> []
                     | [], _  -> rescale v1 regs2
                     | _,  _  -> failwith "parse_asmexpr: non-linear register"
-                in (regs, EMul (e1, e2))
+                in (regs, EMul (e1, e2), hasself1 || hasself2)
             | e1, ENum v2 ->
                 let regs = match regs1, regs2 with
                     | [], [] -> []
                     | _,  [] -> rescale v2 regs1
                     | _,  _  -> failwith "parse_asmexpr: non-linear register"
-                in (regs, EMul (e1, e2))
+                in (regs, EMul (e1, e2), hasself1 || hasself2)
             | e1, e2 ->
                 if regs1 = [] && regs2 = [] then
-                    ([], EMul (e1, e2))
+                    ([], EMul (e1, e2), hasself1 || hasself2)
                 else
                     failwith "parse_asmexpr: non-linear register"
             end
 
         | AsmDiv (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
             if regs1 = [] && regs2 = [] then
                 begin match e1, e2 with
-                | ENum v1, ENum v2 -> ([], ENum (v1/v2))
-                | e1, e2 -> ([], EDiv (e1, e2))
+                | ENum v1, ENum v2 -> ([], ENum (v1/v2), false)
+                | e1,      e2      -> ([], EDiv (e1, e2), hasself1 || hasself2)
                 end
             else
                 failwith "parse_asmexpr: non-linear register"
 
         | AsmMod (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
             if regs1 = [] && regs2 = [] then
                 begin match e1, e2 with
-                | ENum v1, ENum v2 -> ([], ENum (v1 mod v2))
-                | e1, e2 -> ([], EMod (e1, e2))
+                | ENum v1, ENum v2 -> ([], ENum (v1 mod v2), false)
+                | e1,      e2      -> ([], EMod (e1, e2), hasself1 || hasself2)
                 end
             else
                 failwith "parse_asmexpr: non-linear register"
 
         | AsmAnd (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
             if regs1 = [] && regs2 = [] then
                 begin match e1, e2 with
-                | ENum v1, ENum v2 -> ([], ENum (v1 land v2))
-                | e1, e2 -> ([], EAnd (e1, e2))
+                | ENum v1, ENum v2 -> ([], ENum (v1 land v2), false)
+                | e1,      e2      -> ([], EAnd (e1, e2), hasself1 || hasself2)
                 end
             else
                 failwith "parse_asmexpr: non-linear register"
 
         | AsmOr (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
             if regs1 = [] && regs2 = [] then
                 begin match e1, e2 with
-                | ENum v1, ENum v2 -> ([], ENum (v1 lor v2))
-                | e1, e2 -> ([], EOr (e1, e2))
+                | ENum v1, ENum v2 -> ([], ENum (v1 lor v2), false)
+                | e1,      e2      -> ([], EOr (e1, e2), hasself1 || hasself2)
                 end
             else
                 failwith "parse_asmexpr: non-linear register"
 
         | AsmXor (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
             if regs1 = [] && regs2 = [] then
                 begin match e1, e2 with
-                | ENum v1, ENum v2 -> ([], ENum (v1 lxor v2))
-                | e1, e2 -> ([], EXor (e1, e2))
+                | ENum v1, ENum v2 -> ([], ENum (v1 lxor v2), false)
+                | e1,      e2      -> ([], EXor (e1, e2), hasself1 || hasself2)
                 end
             else
                 failwith "parse_asmexpr: non-linear register"
 
         | AsmShl (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
             if regs1 = [] && regs2 = [] then
                 begin match e1, e2 with
-                | ENum v1, ENum v2 -> ([], ENum (v1 lsl v2))
-                | e1, e2 -> ([], EShl (e1, e2))
+                | ENum v1, ENum v2 -> ([], ENum (v1 lsl v2), false)
+                | e1,      e2      -> ([], EShl (e1, e2), hasself1 || hasself2)
                 end
             else
                 failwith "parse_asmexpr: non-linear register"
 
         | AsmShr (e1,e2) ->
-            let (regs1, e1) = canonicalize e1 in
-            let (regs2, e2) = canonicalize e2 in
+            let (regs1, e1, hasself1) = canonicalize e1 in
+            let (regs2, e2, hasself2) = canonicalize e2 in
             if regs1 = [] && regs2 = [] then
                 begin match e1, e2 with
-                | ENum v1, ENum v2 -> ([], ENum (v1 lsr v2))
-                | e1, e2 -> ([], EShr (e1, e2))
+                | ENum v1, ENum v2 -> ([], ENum (v1 lsr v2), false)
+                | e1,      e2      -> ([], EShr (e1, e2), hasself1 || hasself2)
                 end
             else
                 failwith "parse_asmexpr: non-linear register"
+    in
 
-    in function
-    | AsmPush () -> Push
-    | AsmPeek () -> Peek
-    | AsmPop () -> Pop
+    match e with
+    | AsmPush () -> (Push, None)
+    | AsmPeek () -> (Peek, None)
+    | AsmPop () -> (Pop, None)
     | AsmMem e ->
-        begin match canonicalize e with
-        | [], imm -> MemLit imm
-        | [((A|B|C|X|Y|Z|I|J) as r, 1)], ENum 0 -> MemReg r
-        | [((A|B|C|X|Y|Z|I|J) as r, 1)], imm -> MemRegLit (r,imm)
-        | [(SP, 1)], ENum 0 -> Peek
-        | [(r, 1)], imm ->
-            failwith ("parse_asmexpr: unsupported register " ^ string_of_reg r ^
-                      " in memory reference")
-        | [(r, k)], imm ->
-            failwith ("parse_asmexpr: non-linear register " ^ string_of_reg r)
-        | _, _ ->
-            failwith "parse_asmexpr: multiple registers in memory reference"
-        end
+        let (regs, e', hasself) = canonicalize e in
+        let v =
+            match regs, e' with
+            | [], imm -> MemLit imm
+            | [((A|B|C|X|Y|Z|I|J) as r, 1)], ENum 0 -> MemReg r
+            | [((A|B|C|X|Y|Z|I|J) as r, 1)], imm -> MemRegLit (r,imm)
+            | [(SP, 1)], ENum 0 -> Peek
+            | [(r, 1)], imm ->
+                failwith ("parse_asmexpr: unsupported register " ^
+                          string_of_reg r ^ " in memory reference")
+            | [(r, k)], imm ->
+                failwith ("parse_asmexpr: non-linear register " ^
+                          string_of_reg r)
+            | _, _ ->
+                failwith "parse_asmexpr: multiple registers in memory reference"
+        in (v, if hasself then !selflabel else None)
     | e ->
-        begin match canonicalize e with
-        | [], imm ->
-            begin match e with
-            | AsmLong _ -> LitLong imm
-            | _ -> Lit imm
-            end
-        | [(r, 1)], ENum 0 ->
-            Reg r
-        | [(r, k)], imm ->
-            failwith ("parse_asmexpr: unsupported arithmetic on register " ^
-                      string_of_reg r)
-        | _, _ ->
-            failwith "parse_asmexpr: unsupported arithmetic on registers"
-        end
+        let (regs, e', hasself) = canonicalize e in
+        let v =
+            match regs, e' with
+            | [], imm ->
+                begin match e with
+                | AsmShort _ -> LitShort imm
+                | AsmLong _ -> LitLong imm
+                | _ -> Lit imm
+                end
+            | [(r, 1)], ENum 0 ->
+                Reg r
+            | [(r, k)], imm ->
+                failwith ("parse_asmexpr: unsupported arithmetic on register " ^
+                          string_of_reg r)
+            | _, _ ->
+                failwith "parse_asmexpr: unsupported arithmetic on registers"
+        in (v, if hasself then !selflabel else None)
 
 (**********************************************************************)
 (* Assembly Statements. (e.g. SUB SP, 1) *)
@@ -545,11 +583,6 @@ let print_stmt s =
             List.iter (show indent) is
     in show "" s
 
-let gensym prefix =
-    let counter = ref (-1) in
-    let prefix = prefix ^ "(" in
-    function () -> incr counter; prefix ^ string_of_int !counter ^ ")"
-
 type compile_result =
     | Done of int list
     | NotYet of int * int       (* min length, max length *)
@@ -573,6 +606,13 @@ let compile_value = function
         let v = v land 0xffff in
         if v < 32 then Done [32 + v] else Done [31; v]
     | Lit e -> NotYet (0, 1)
+    | LitShort (ENum v) ->
+        let v = v land 0xffff in
+        if v < 32 then
+            Done [32 + v]
+        else
+            failwith "compile_value: failed to satisfy SHORT constraint"
+    | LitShort e -> NotYet (0, 0)
     | LitLong (ENum v) -> Done [31; v]
     | LitLong e -> NotYet (1, 1)
 
@@ -624,38 +664,59 @@ let compile_instr =
     | Ifb (a,b)   -> binary 15 a b
     | Jsr a       -> unary   1 a
 
+let attach_label l0 s =
+    match l0 with
+    | Some l -> Labeled (l,s)
+    | None -> s
+
 let make_instr ins =
     match compile_instr ins with
     | Done cs -> Static cs
     | NotYet (min,max) -> Dynamic (ins,min,max)
 
+let make_unary_instr f a =
+    let (a,aself) = parse_asmexpr a in
+    let s = make_instr (f a) in
+    attach_label aself s
+
+let make_binary_instr f a b =
+    let (a,aself) = parse_asmexpr a in
+    let (b,bself) = parse_asmexpr b in
+    let s = make_instr (f a b) in
+    attach_label aself (attach_label bself s)
+
 module Asm__ = struct
     let dat l =
         let do_one = function
-            | AsmStr s -> make_instr (DatStr s)
-            | a -> match parse_asmexpr a with
-                | Lit e -> make_instr (Dat e)
-                | _ -> failwith "invalid values for DAT"
+            | AsmStr s ->
+                make_instr (DatStr s)
+            | a ->
+                let build = function
+                    | Lit e -> Dat e
+                    | _ -> failwith "invalid values for DAT"
+                in make_unary_instr build a
         in match l with
         | [a] -> do_one a
         | l -> Blocked (List.map do_one l)
 
-    let set  a b = make_instr (Set (parse_asmexpr a, parse_asmexpr b))
-    let add  a b = make_instr (Add (parse_asmexpr a, parse_asmexpr b))
-    let sub  a b = make_instr (Sub (parse_asmexpr a, parse_asmexpr b))
-    let mul  a b = make_instr (Mul (parse_asmexpr a, parse_asmexpr b))
-    let div  a b = make_instr (Div (parse_asmexpr a, parse_asmexpr b))
-    let mod_ a b = make_instr (Mod (parse_asmexpr a, parse_asmexpr b))
-    let shl  a b = make_instr (Shl (parse_asmexpr a, parse_asmexpr b))
-    let shr  a b = make_instr (Shr (parse_asmexpr a, parse_asmexpr b))
-    let and_ a b = make_instr (And (parse_asmexpr a, parse_asmexpr b))
-    let bor  a b = make_instr (Bor (parse_asmexpr a, parse_asmexpr b))
-    let xor  a b = make_instr (Xor (parse_asmexpr a, parse_asmexpr b))
-    let ife  a b = make_instr (Ife (parse_asmexpr a, parse_asmexpr b))
-    let ifn  a b = make_instr (Ifn (parse_asmexpr a, parse_asmexpr b))
-    let ifg  a b = make_instr (Ifg (parse_asmexpr a, parse_asmexpr b))
-    let ifb  a b = make_instr (Ifb (parse_asmexpr a, parse_asmexpr b))
-    let jsr  a   = make_instr (Jsr (parse_asmexpr a))
+    let set  = make_binary_instr (fun a b -> Set (a,b))
+    let add  = make_binary_instr (fun a b -> Add (a,b))
+    let sub  = make_binary_instr (fun a b -> Sub (a,b))
+    let mul  = make_binary_instr (fun a b -> Mul (a,b))
+    let div  = make_binary_instr (fun a b -> Div (a,b))
+    let mod_ = make_binary_instr (fun a b -> Mod (a,b))
+    let shl  = make_binary_instr (fun a b -> Shl (a,b))
+    let shr  = make_binary_instr (fun a b -> Shr (a,b))
+    let and_ = make_binary_instr (fun a b -> And (a,b))
+    let bor  = make_binary_instr (fun a b -> Bor (a,b))
+    let xor  = make_binary_instr (fun a b -> Xor (a,b))
+    let ife  = make_binary_instr (fun a b -> Ife (a,b))
+    let ifn  = make_binary_instr (fun a b -> Ifn (a,b))
+    let ifg  = make_binary_instr (fun a b -> Ifg (a,b))
+    let ifb  = make_binary_instr (fun a b -> Ifb (a,b))
+    let jsr  = make_unary_instr  (fun a   -> Jsr a)
+    let nop  = make_instr        (Set (Reg A, Reg A))
+    let jmp  = make_unary_instr  (fun a   -> Set (Reg PC, a))
 
     let label l s = Labeled (l,s)
 
@@ -829,6 +890,9 @@ let asm ?(origin=0) ?(maxpass=50) ss =
     let mapping = pass initmapping maxpass in
     (*show_mapping mapping;*)
 
+    (* remove all the local labels from the resulting code. also forces a longer
+     * encoding for remaining expressions. note that if the expression is
+     * explicitly order to use a shorter encoding via SHORT it won't change. *)
     let remap_label l =
         if String.length l > 0 && l.[0] = '.' then None else Some l in
     let resolve l =

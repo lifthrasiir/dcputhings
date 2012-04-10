@@ -136,15 +136,15 @@ they cannot be used in the expression.
 
 DcpuAsm supports numbers in base 2 (`0b101`), base 8 (`0o337`), base 10 and
 base 16 (`0x1337`) just like Ocaml. Additionally a character literal (`'A'`)
-will be equal to its numerical code (i.e. `int_of_char 'A'`).
+will be equal to its numerical code (i.e. `int_of_char 'A'`). All numbers are
+treated as built-in Ocaml numbers (31 or 63 bits long depending on the
+platform) so you should be aware of it.
 
 DcpuAsm supports all ordinary arithmetic and bitwise operations: `+`, `-`,
-`*`, `DIV`, `MOD`, `NOT`, `AND`, `OR`, `XOR`, `SHL`, `SHR`. All numbers are
-treated as built-in Ocaml numbers (31 or 63 bits long depending on the
-platform) so you should be aware of it. While arithmetic operations are
-permitted for registers, the resulting expression has to be in the form
-`register + other expression` or `[register + other expression]` due to the
-constraint of DCPU-16. (The intermediate expression does *not* have to
+`*`, `DIV`, `MOD`, `NOT`, `AND`, `OR`, `XOR`, `SHL`, `SHR`. While arithmetic
+operations are permitted for registers, the resulting expression has to be in
+the form `register + other expression` or `[register + other expression]` due
+to the constraint of DCPU-16. (The intermediate expression does *not* have to
 however: `[3*A+2*(2*B-A)-(8 DIV 2)*B]` will be resolved to `[A]`, which is
 perfectly valid in DCPU-16.)
 
@@ -194,9 +194,11 @@ expression is simple enough (e.g. a single identifier) then you can omit
     ]
 
 DcpuAsm tries to generate the shortest code for given assembly, but you can
-override this behavior by `LONG` prefix. `LONG e` will generate a longer form
-of given immediate (not the instruction). This only applies to a literal
-value; it is silently ignored in other kind of values.
+override this behavior by `SHORT` and `LONG` prefixes. `SHORT e` will cause an
+error when `e` does not fit in the range of 0--31, and `LONG e` will generate
+a longer form of given immediate (not the instruction, so should use it twice
+for basic opcodes). This only applies to a literal value; it is silently
+ignored in other kind of values.
 
 ### Blocks
 
@@ -289,5 +291,5 @@ As always you should expect the following caveats:
 * `JMP` does not try to generate an optimal code (e.g. using `ADD` or `SUB`)
   yet.
 * `TIMES` prefix and `?` in the `DAT` pseudo-instruction is missing yet.
-* `SHORT` prefix, as a counterpart to `LONG`, is planned but not implemented.
+* `DAT` is missing `*`-prefixed items.
 
