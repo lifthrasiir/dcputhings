@@ -46,10 +46,10 @@ word *get(word v, word *sink)
 	switch (v) {
 	CASEx8(0x00):		return &reg[v];
 	CASEx8(0x08):		return &mem[reg[v-0x08]];
-	CASEx8(0x10):	++wc;	return &mem[reg[v-0x10] + mem[pc++]];
+	CASEx8(0x10):	++wc;	return &mem[(word)(reg[v-0x10] + mem[pc++])];
 	case 0x18:		return &mem[sp++];
 	case 0x19:		return &mem[sp];
-	case 0x1a:		return &mem[--sp];
+	case 0x1a:		return &mem[(word)--sp];
 	case 0x1b:		return &sp;
 	case 0x1c:		return &pc;
 	case 0x1d:		return &of;
@@ -142,7 +142,7 @@ word dump(word pc)
 	printf("%04x: ", oldpc);
 	if (op) {
 		static const char opcodes[16][4] = {
-			"???", "SET", "ADD", "SUB", "MUL", "DIV", "MOV", "SHL",
+			"???", "SET", "ADD", "SUB", "MUL", "DIV", "MOD", "SHL",
 			"SHR", "AND", "BOR", "XOR", "IFE", "IFN", "IFG", "IFB",
 		};
 		printf("%s ", opcodes[op]);

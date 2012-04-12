@@ -34,10 +34,10 @@ word *get(word v, word *sink)
 	switch (v) {
 	CASEx8(0x00):		return &reg[v];
 	CASEx8(0x08):		return &mem[reg[v-0x08]];
-	CASEx8(0x10):	++wc;	return &mem[reg[v-0x10] + mem[pc++]];
+	CASEx8(0x10):	++wc;	return &mem[(word)(reg[v-0x10] + mem[pc++])];
 	case 0x18:		return &mem[sp++];
 	case 0x19:		return &mem[sp];
-	case 0x1a:		return &mem[--sp];
+	case 0x1a:		return &mem[(word)--sp];
 	case 0x1b:		return &sp;
 	case 0x1c:		return &pc;
 	case 0x1d:		return &of;
@@ -70,29 +70,29 @@ void tick(void)
 
 		case 0x02: // ADD
 			tmp = (xword)*a + (xword)*b;
-			of = (tmp >= 0x10000 ? 1 : 0);
 			*a = (word)(tmp & 0xffff);
+			of = (tmp >= 0x10000 ? 1 : 0);
 			wc += 2;
 			break;
 
 		case 0x03: // SUB
 			tmp = (xword)*a + (xword)~*b + 1;
-			of = (tmp >= 0x10000 ? 0xffff : 0);
 			*a = (word)(tmp & 0xffff);
+			of = (tmp >= 0x10000 ? 0xffff : 0);
 			wc += 2;
 			break;
 
 		case 0x04: // MUL
 			tmp = (xword)*a * (xword)*b;
-			of = (word)(tmp >> 16);
 			*a = (word)(tmp & 0xffff);
+			of = (word)(tmp >> 16);
 			wc += 2;
 			break;
 
 		case 0x05: // DIV
 			tmp = (*b ? ((xword)*a << 16) / (xword)*b : 0);
-			of = (word)(tmp & 0xffff);
 			*a = (word)(tmp >> 16);
+			of = (word)(tmp & 0xffff);
 			wc += 3;
 			break;
 
@@ -103,15 +103,15 @@ void tick(void)
 
 		case 0x07: // SHL
 			tmp = (*b >= 32 ? 0 : (xword)*a << (xword)*b);
-			of = (word)(tmp >> 16);
 			*a = (word)(tmp & 0xffff);
+			of = (word)(tmp >> 16);
 			wc += 2;
 			break;
 
 		case 0x08: // SHR
 			tmp = (*b >= 32 ? 0 : ((xword)*a << 16) >> (xword)*b);
-			of = (word)(tmp & 0xffff);
 			*a = (word)(tmp >> 16);
+			of = (word)(tmp & 0xffff);
 			wc += 2;
 			break;
 
@@ -225,7 +225,7 @@ word dump(word pc)
 	printf("%04x: ", oldpc);
 	if (op) {
 		static const char opcodes[16][4] = {
-			"???", "SET", "ADD", "SUB", "MUL", "DIV", "MOV", "SHL",
+			"???", "SET", "ADD", "SUB", "MUL", "DIV", "MOD", "SHL",
 			"SHR", "AND", "BOR", "XOR", "IFE", "IFN", "IFG", "IFB",
 		};
 		printf("%s ", opcodes[op]);

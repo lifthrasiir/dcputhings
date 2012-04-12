@@ -3,30 +3,30 @@
 
 values = {
     # value: (code, sp delta, pc delta or "next word" flag)
-     0: ('mem[sp%(spdelta)+d]', 1, 0),
-     1: ('mem[sp%(spdelta)+d]', 0, 0),
-     2: ('mem[sp%(spdelta)+d-1]', -1, 0),
+     0: ('mem[%(sp)s]', 1, 0),
+     1: ('mem[%(sp)s]', 0, 0),
+     2: ('mem[%(sp1)s]', -1, 0),
      3: ('sp', 0, 0),
      4: ('pc', 0, 0),
      5: ('of', 0, 0),
-     6: ('mem[mem[pc%(pcdelta)+d]]', 0, 1),
-     7: ('mem[pc%(pcdelta)+d]', 0, 1),
+     6: ('mem[mem[%(pc)s]]', 0, 1),
+     7: ('mem[%(pc)s]', 0, 1),
      8: ('reg[(c>>%(shift)d)&7]', 0, 0),
      9: ('mem[reg[(c>>%(shift)d)&7]]', 0, 0),
-    10: ('mem[reg[(c>>%(shift)d)&7]+mem[pc%(pcdelta)+d]]', 0, 1),
+    10: ('mem[(word)(reg[(c>>%(shift)d)&7]+mem[%(pc)s])]', 0, 1),
     11: ('((c>>%(shift)d)&31)', 0, 0),
 }
 
 opcodes = {
     # opcode: (code, cycles),
      1: ('%(a)s=%(b)s;', 1),
-     2: ('%(acache)st=(xword)%(aref)s+(xword)%(b)s;of=t>>16;%(aref)s=t;', 2),
-     3: ('%(acache)st=(xword)%(aref)s-(xword)%(b)s;of=t>>16;%(aref)s=t;', 2),
-     4: ('%(acache)st=(xword)%(aref)s*(xword)%(b)s;of=t>>16;%(aref)s=t;', 3),
-     5: ('%(acache)su=%(b)s;t=(u?((xword)%(aref)s<<16)/u:0);of=t;%(aref)s=t>>16;', 3),
+     2: ('%(acache)st=(xword)%(aref)s+(xword)%(b)s;%(aref)s=t;of=t>>16;', 2),
+     3: ('%(acache)st=(xword)%(aref)s-(xword)%(b)s;%(aref)s=t;of=t>>16;', 2),
+     4: ('%(acache)st=(xword)%(aref)s*(xword)%(b)s;%(aref)s=t;of=t>>16;', 3),
+     5: ('%(acache)su=%(b)s;t=(u?((xword)%(aref)s<<16)/u:0);%(aref)s=t>>16;of=t;', 3),
      6: ('%(acache)su=%(b)s;%(aref)s=(u?(xword)%(aref)s%%u:0);', 3),
-     7: ('%(acache)su=%(b)s;t=(u>31?0:(xword)%(aref)s<<u);of=t>>16;%(aref)s=t;', 2),
-     8: ('%(acache)su=%(b)s;t=(u>31?0:(xword)%(aref)s<<16>>u);of=t;%(aref)s=t>>16;', 2),
+     7: ('%(acache)su=%(b)s;t=(u>31?0:(xword)%(aref)s<<u);%(aref)s=t;of=t>>16;', 2),
+     8: ('%(acache)su=%(b)s;t=(u>31?0:(xword)%(aref)s<<16>>u);%(aref)s=t>>16;of=t;', 2),
      9: ('%(a)s&=%(b)s;', 1),
     10: ('%(a)s|=%(b)s;', 1),
     11: ('%(a)s^=%(b)s;', 1),
@@ -42,8 +42,7 @@ for op in xrange(1, 16):
     opskip = (op >= 12)
     for a in xrange(12):
         acode, asp, apc = values[a]
-        acode = acode % {'spdelta': 0, 'pcdelta': 0, 'shift': 4}
-        acode = acode.replace('+0', '').replace('+1-1', '')
+        acode = acode % {'sp': 'sp', 'sp1': '(word)(sp-1)', 'pc': 'pc', 'shift': 4}
         # only applicable for certain codes
         if a in (6, 8, 9, 10):
             acache = 'v=%s;' % acode[4:-1]
@@ -55,8 +54,10 @@ for op in xrange(1, 16):
         alit = a in (10, 11)
         for b in xrange(12):
             bcode, bsp, bpc = values[b]
-            bcode = bcode % {'spdelta': asp, 'pcdelta': apc, 'shift': 10}
-            bcode = bcode.replace('+0', '').replace('+1-1', '')
+            bcode = bcode % {'sp': '(word)(sp%+d)'%asp if asp else 'sp',
+                             'sp1': '(word)(sp%+d)'%(asp-1) if asp-1 else 'sp',
+                             'pc': '(word)(pc%+d)'%apc if apc else 'pc', 'shift': 10}
+            bcode = bcode.replace('(word)(sp+1)-1', 'sp')
             if opskip or not alit:
                 code = opcode % {'a': acode, 'acache': acache, 'aref': aref, 'b': bcode}
             else:
