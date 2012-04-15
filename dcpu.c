@@ -51,6 +51,15 @@ word *get(word v, word *sink)
 	}
 }
 
+// the number of words in this instruction (1 to 3)
+int length(word c)
+{
+	static const uint32_t hasnext = 0x00008f00;
+	int anext = (hasnext >> ((c >> 5) & 31)) & 1;
+	int bnext = (hasnext >> (c >> 11)) & 1;
+	return 1 + anext + bnext;
+}
+
 void tick(void)
 {
 	word c = mem[pc++];
@@ -134,7 +143,7 @@ void tick(void)
 			if (*a == *b) {
 				wc += 1;
 			} else {
-				pc += 1;
+				pc += length(mem[pc]);
 				wc += 2;
 			}
 			break;
@@ -143,7 +152,7 @@ void tick(void)
 			if (*a != *b) {
 				wc += 1;
 			} else {
-				pc += 1;
+				pc += length(mem[pc]);
 				wc += 2;
 			}
 			break;
@@ -152,7 +161,7 @@ void tick(void)
 			if (*a > *b) {
 				wc += 1;
 			} else {
-				pc += 1;
+				pc += length(mem[pc]);
 				wc += 2;
 			}
 			break;
@@ -161,7 +170,7 @@ void tick(void)
 			if (*a & *b) {
 				wc += 1;
 			} else {
-				pc += 1;
+				pc += length(mem[pc]);
 				wc += 2;
 			}
 			break;
@@ -171,10 +180,13 @@ void tick(void)
 		}
 	} else if (aa) {
 		word b0;
+		word tmp;
+
 		switch (aa) {
 		case 0x01: // JSR
+			tmp = *get(bb, &b0);
 			mem[--sp] = pc;
-			pc = *get(bb, &b0);
+			pc = tmp;
 			wc += 2;
 			break;
 

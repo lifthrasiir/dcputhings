@@ -63,6 +63,15 @@ word *get(word v, word *sink)
 	}
 }
 
+// the number of words in this instruction (1 to 3)
+int length(word c)
+{
+	static const uint32_t hasnext = 0x00008f00;
+	int anext = (hasnext >> ((c >> 5) & 31)) & 1;
+	int bnext = (hasnext >> (c >> 11)) & 1;
+	return 1 + anext + bnext;
+}
+
 void tick(void)
 {
 	word c = mem[pc++];
@@ -82,8 +91,9 @@ void tick(void)
 			break;
 
 		case 0x01: // JSR
+			v = *get(bb, &b0);
 			mem[--sp] = pc;
-			pc = *get(bb, &b0);
+			pc = v;
 			wc += 2;
 			break;
 

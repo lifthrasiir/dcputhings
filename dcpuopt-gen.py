@@ -1,6 +1,3 @@
-# strategy:
-# we first generate (somewhat) verbose code and remove redundant "+0"s.
-
 values = {
     # value: (code, sp delta, pc delta or "next word" flag)
      0: ('mem[%(sp)s]', 1, 0),
@@ -73,11 +70,11 @@ for op in xrange(1, 16):
             if not ajump: # SET PC, ... ignores all side effects on PC
                 if apc + bpc:
                     if opskip:
-                        code += 'pc+=%d+sk;' % (apc + bpc)
+                        code += 'pc+=%d;if(sk)pc+=length(mem[pc]);' % (apc + bpc)
                     else:
                         code += 'pc+=%d;' % (apc + bpc)
                 elif opskip:
-                    code += 'pc+=sk;'
+                    code += 'if(sk)pc+=length(mem[pc]);'
             if opskip:
                 code += 'wc+=%d+sk;' % (apc + bpc + opcycles)
             else:
