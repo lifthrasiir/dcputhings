@@ -68,6 +68,7 @@ type instr =
     | Ifg of value * value
     | Ifb of value * value
     | Jsr of value
+    | Jmp of value
 
 val string_of_instr : instr -> string
 

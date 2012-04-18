@@ -68,7 +68,10 @@ DCPU-16 has lots of nops, this encoding is chosen because of the simplicity of
 its binary encoding (0x0001). It may change if 0x0000 also turns out to be a
 nop.
 
-`JMP a` is equivalent to `SET PC, a`.
+`JMP a` sets the PC to `a` in the fastest or at least shortest way. There are
+4 possible encodings for `JMP`: `SET PC, ...`, `XOR PC, ...`, `AND PC, ...`
+and `SUB PC, ...`. (Among them `XOR` is fastest but not applicable for all
+cases.) Note that the plain `SET PC, a` won't be optimized.
 
 `PUSH a` is equivalent to `SET PUSH, a`. `POP a` is equivalent to `SET a,
 POP`. You can also use `[SP]` instead of `PEEK`. (But `[SP+<number>]` is still
@@ -288,8 +291,6 @@ As always you should expect the following caveats:
   normal Ocaml code because `(%` will be treated as one token. (`( %label1`
   etc. will work.) The assembly syntax is specially crafted to separate those
   two, however. Any suggestions about this problem are welcomed.
-* `JMP` does not try to generate an optimal code (e.g. using `ADD` or `SUB`)
-  yet.
 * `TIMES` prefix and `?` in the `DAT` pseudo-instruction is missing yet.
 * `DAT` is missing `*`-prefixed items.
 

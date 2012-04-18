@@ -101,27 +101,27 @@ let rec eval_expr resolve e =
     | EAnd (e1,e2) ->
         begin match recur e1, recur e2 with
         | ENum v1, ENum v2 -> ENum (v1 land v2)
-        | e1, e2 -> EMod (e1, e2)
+        | e1, e2 -> EAnd (e1, e2)
         end
     | EOr (e1,e2) ->
         begin match recur e1, recur e2 with
         | ENum v1, ENum v2 -> ENum (v1 lor v2)
-        | e1, e2 -> EMod (e1, e2)
+        | e1, e2 -> EOr (e1, e2)
         end
     | EXor (e1,e2) ->
         begin match recur e1, recur e2 with
         | ENum v1, ENum v2 -> ENum (v1 lxor v2)
-        | e1, e2 -> EMod (e1, e2)
+        | e1, e2 -> EXor (e1, e2)
         end
     | EShl (e1,e2) ->
         begin match recur e1, recur e2 with
         | ENum v1, ENum v2 -> ENum (v1 lsl v2)
-        | e1, e2 -> EMod (e1, e2)
+        | e1, e2 -> EShl (e1, e2)
         end
     | EShr (e1,e2) ->
         begin match recur e1, recur e2 with
         | ENum v1, ENum v2 -> ENum (v1 lsr v2)
-        | e1, e2 -> EMod (e1, e2)
+        | e1, e2 -> EShr (e1, e2)
         end
 
 (* DCPU-16 operand. (termed "value" in the official spec)
@@ -173,7 +173,7 @@ let force_longer_value = function
     | Lit e -> LitLong e
     | v -> v
 
-let rec eval_value resolve = function
+let eval_value resolve = function
     | MemRegLit (r,e) ->
         let e = eval_expr resolve e in
         if e = ENum 0 then MemReg r else MemRegLit (r,e)
@@ -203,6 +203,7 @@ type instr =
     | Ifg of value * value
     | Ifb of value * value
     | Jsr of value
+    | Jmp of value              (* not a real opcode *)
 
 let string_of_instr = function
     | Dat (ENum v) -> "DAT " ^ string_of_int v
@@ -224,6 +225,7 @@ let string_of_instr = function
     | Ifg (a,b) -> "IFG " ^ string_of_value a ^ ", " ^ string_of_value b
     | Ifb (a,b) -> "IFB " ^ string_of_value a ^ ", " ^ string_of_value b
     | Jsr a -> "JSR " ^ string_of_value a
+    | Jmp a -> "JMP " ^ string_of_value a
 
 let force_instr force =
     function
@@ -245,11 +247,12 @@ let force_instr force =
     | Ifg (a,b) -> Ifg (force a, force b)
     | Ifb (a,b) -> Ifb (force a, force b)
     | Jsr a -> Jsr (force a)
+    | Jmp a -> Jmp (force a)
 
 let force_shorter_instr = force_instr force_shorter_value
 let force_longer_instr = force_instr force_longer_value
 
-let rec eval_instr resolve =
+let eval_instr resolve =
     let eval = eval_value resolve in
     function
     | Dat e -> Dat (eval_expr resolve e)
@@ -270,6 +273,55 @@ let rec eval_instr resolve =
     | Ifg (a,b) -> Ifg (eval a, eval b)
     | Ifb (a,b) -> Ifb (eval a, eval b)
     | Jsr a -> Jsr (eval a)
+    | Jmp a -> Jmp (eval a)
+
+let eval_instr_with_pc cur resolve =
+    let eval = eval_expr resolve in
+
+    let is_short_literal = function
+        | ENum v -> (v land 0xffff < 32)
+        | _ -> false in
+
+    (* we only convert operands which are short constants (so they cannot
+     * cause SHORT to err), but for the safety. *)
+    let convert_to_short = function
+        | ENum v -> LitShort (ENum (v land 0xffff))
+        | _ -> failwith "impossible" in
+
+    function
+    | Jmp (Lit e) ->
+        (* check four possible operands for comparison.
+         * note that opcodes other than SET need to use only one word,
+         * so the PC during the evalution of (Lit e) is always (cur + 1). *)
+        let aminuspc = eval (ESub (e, ENum (cur + 1))) in
+        let pcminusa = eval (ESub (ENum (cur + 1), e)) in
+        let axorpc = eval (EXor (e, ENum (cur + 1))) in
+        let a = eval e in
+        if is_short_literal axorpc then
+            (* use "XOR PC, ...". the most efficient (1 cycle), useful for
+             * short relative jumps. *)
+            Xor (Reg PC, convert_to_short axorpc)
+        else if is_short_literal a then
+            (* use "SET PC, ...". if the operand is a short literal then it
+             * takes one cycle, but is only applicable for very few labels. *)
+            Set (Reg PC, convert_to_short a)
+        else if is_short_literal aminuspc then
+            (* use "ADD PC, ...". it takes as same number of cycles as
+             * SET with e long literal but one word shorter. *)
+            Add (Reg PC, convert_to_short aminuspc)
+        else if is_short_literal pcminusa then
+            (* use "SUB PC, ...". same as "ADD PC, ...". *)
+            Sub (Reg PC, convert_to_short pcminusa)
+        else
+            (* otherwise "SET PC, ..." takes 2 cycles and optimal. *)
+            Set (Reg PC, Lit a)
+
+    | Jmp a ->
+        (* if the operand is not a literal or explicit SHORT or LONG encoding
+         * is requested then we fall back to the usual encoding. *)
+        Set (Reg PC, eval_value resolve a)
+
+    | ins -> eval_instr resolve ins
 
 (**********************************************************************)
 (* Assembly Expressions. (e.g. [A+0x42]) *)
@@ -639,6 +691,13 @@ let compile_instr =
             NotYet (1+amin+bmin, 1+amax+bmax)
     in
 
+    let jump a =
+        match compile_value a with
+        | Done [] -> failwith "impossible"
+        | Done (a::anext) -> Done ((a lsl 10) lor 0x01c1 :: anext)
+        | NotYet (amin,amax) -> NotYet (max 1 amin, 1+amax)
+    in
+
     function
     | Dat (ENum v) -> Done [v land 0xffff]
     | Dat e       -> NotYet (1, 1)
@@ -663,6 +722,7 @@ let compile_instr =
     | Ifg (a,b)   -> binary 14 a b
     | Ifb (a,b)   -> binary 15 a b
     | Jsr a       -> unary   1 a
+    | Jmp a       -> jump      a
 
 let attach_label l0 s =
     match l0 with
@@ -716,7 +776,7 @@ module Asm__ = struct
     let ifb  = make_binary_instr (fun a b -> Ifb (a,b))
     let jsr  = make_unary_instr  (fun a   -> Jsr a)
     let nop  = make_instr        (Set (Reg A, Reg A))
-    let jmp  = make_unary_instr  (fun a   -> Set (Reg PC, a))
+    let jmp  = make_unary_instr  (fun a   -> Jmp a)
 
     let label l s = Labeled (l,s)
 
@@ -742,16 +802,17 @@ let resolve_labels origin oldmapping ss =
 
     let newmapping = Hashtbl.create 4 in
 
-    let rec loop cur resolved cont =
+    let rec loop cur resolved acc cont =
         if cur > 0xffff then
             failwith "asm: the address exceeds the memory space";
         function
-        | [] -> cont cur resolved
+        | [] -> cont cur resolved acc
         | Nothing () :: t ->
-            loop cur resolved cont t
+            loop cur resolved acc cont t
         | Static cs :: t ->
             let cur = cur + List.length cs in
-            loop cur resolved cont t
+            let acc = Static cs :: acc in
+            loop cur resolved acc cont t
 
         | Dynamic (i,min,max) :: t ->
             (* it is possible that the length of the instruction does not
@@ -759,19 +820,22 @@ let resolve_labels origin oldmapping ss =
              * if it *does* survive this pass then the instruction will have to
              * contain an unknown (free) label, which we can collect later. *)
             if min = max then
-                loop (cur + max) resolved cont t
+                let acc = Dynamic (i,min,max) :: acc in
+                loop (cur + max) resolved acc cont t
             else
                 (* we now evaluate the instruction and see if the instruction
                  * has been resolved or at least does not change its length. *)
-                let ins = eval_instr resolve i in
+                let ins = eval_instr_with_pc cur resolve i in
                 begin match compile_instr ins with
                 | Done cs ->
                     let cur = cur + List.length cs in
-                    loop cur resolved cont t
+                    let acc = Static cs :: acc in
+                    loop cur resolved acc cont t
                 | NotYet (min,max) ->
                     (* if the length of this instruction does change then we
                      * assume the maximum length. *)
-                    loop (cur + max) resolved cont t
+                    let acc = Dynamic (ins,min,max) :: acc in
+                    loop (cur + max) resolved acc cont t
                 end
 
         | Labeled (l,s) :: t ->
@@ -783,15 +847,16 @@ let resolve_labels origin oldmapping ss =
                 try Hashtbl.find oldmapping l = cur
                 with Not_found -> true in
             Hashtbl.replace newmapping l cur;
-            loop cur (resolved && unchanged) cont (s::t)
+            let acc = Labeled (l, Blocked []) :: acc in
+            loop cur (resolved && unchanged) acc cont (s::t)
 
         | Blocked ss :: t ->
-            let cont' cur resolved = loop cur resolved cont t in
-            loop cur resolved cont' ss
+            let cont' cur resolved acc = loop cur resolved acc cont t in
+            loop cur resolved acc cont' ss
     in
 
-    let cont last resolved = (resolved, newmapping) in
-    loop origin true cont ss
+    let cont last resolved acc = (resolved, newmapping, List.rev acc) in
+    loop origin true [] cont ss
 
 let remap_and_flatten resolve remap_label remap_instr ss =
     let id s = s in
@@ -877,17 +942,18 @@ let asm ?(origin=0) ?(maxpass=50) ss =
             failwith ("asm: cannot resolve all symbols after " ^
                       string_of_int maxpass ^ " pass(es)")
         else
-            let (resolved, newmapping) = resolve_labels origin oldmapping ss in
+            let (resolved, newmapping, ss') =
+                resolve_labels origin oldmapping ss in
             if resolved then
-                newmapping
+                (newmapping, ss')
             else
                 pass newmapping (limit-1)
     in
 
     (* we always run at least two passes. if the second pass results in the same
      * mapping as the first pass then the second pass succeeds. *)
-    let (_, initmapping) = resolve_labels origin (Hashtbl.create 0) ss in
-    let mapping = pass initmapping maxpass in
+    let (_, initmapping, _) = resolve_labels origin (Hashtbl.create 0) ss in
+    let (mapping, ss') = pass initmapping maxpass in
     (*show_mapping mapping;*)
 
     (* remove all the local labels from the resulting code. also forces a longer
@@ -898,7 +964,7 @@ let asm ?(origin=0) ?(maxpass=50) ss =
     let resolve l =
         try ENum (Hashtbl.find mapping l)
         with Not_found -> ELabel l in
-    Blocked (remap_and_flatten resolve remap_label force_longer_instr ss)
+    Blocked (remap_and_flatten resolve remap_label force_longer_instr ss')
 
 let to_words s =
     let off = ref 0 in

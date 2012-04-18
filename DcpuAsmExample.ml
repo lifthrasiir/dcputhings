@@ -266,9 +266,8 @@ let switch e cases0 =
             SUB #e, minv
         else
             PASS;
-        SET O, %_skip;          (* abusing O as a temporary storage *)
         IFG #e, VAL (maxv-minv);
-            JMP O;              (* since "JMP %_skip" may not fit in a word *)
+            JMP %_skip;
         JMP [#e+%_jmptab];
     %_jmptab:
         BLOCK (List.rev !jmptab);
@@ -307,7 +306,7 @@ hexdump_asm "Macro facility" [
 
 hexdump_asm "Shortcuts" [
     NOP;                        (* same as SET A, A; *)
-    JMP %next;                  (* same as SET PC, %next; *)
+    JMP %next;                  (* same as SET PC, %next; or shorter one *)
 %next:
     JMP %_+5;                   (* a pseudolabel for the current PC *)
     DAT 1, 2, 3, 4;
