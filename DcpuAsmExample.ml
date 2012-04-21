@@ -305,21 +305,25 @@ hexdump_asm "Macro facility" [
 (* Some other examples. *)
 
 hexdump_asm "Shortcuts" [
-    NOP;                        (* same as SET A, A; *)
-    JMP %next;                  (* same as SET PC, %next; or shorter one *)
+    NOP;                    (* same as SET A, A; *)
+    JMP %next;              (* same as SET PC, %next; or shorter/faster one *)
 %next:
-    JMP %_+5;                   (* a pseudolabel for the current PC *)
+    JMP %_+5;               (* a pseudolabel for the current PC *)
     DAT 1, 2, 3, 4;
-    PUSH A;                     (* same as SET PUSH, A; *)
-    SET B, [SP];                (* same as SET B, PEEK; *)
-    POP C;                      (* same as SET C, POP; *)
-    BRK;                        (* same as SUB PC, 1; for now.
-                                 * may change if we get de jure BRK command. *)
-    HLT;                        (* same as BRK; for now. *)
+    PUSH A;                 (* same as SET PUSH, A; *)
+    SET B, [SP];            (* same as SET B, PEEK; *)
+    POP C;                  (* same as SET C, POP; *)
+    JSR %dummy;
+    BRK;                    (* same as SUB PC, 1; for now.
+                             * may change if we get de jure BRK command. *)
+    HLT;                    (* same as BRK; for now. *)
+
+%dummy:
+    RET;                    (* same as SET PC, POP; *)
 ];;
 
 let screen_base = 0x8000 in
-hexdump_asm "Immediate expressions" [
+hexdump_asm "Immediate expressions and DAT extensions" [
     SET A, 0x8000;                          (* immediate *)
     SET A, '*';                             (* immediate (char code) *)
     SET A, B;                               (* register *)
@@ -343,7 +347,33 @@ hexdump_asm "Immediate expressions" [
 %dat:
     (* DAT supports number, string and Ocaml code as a string. *)
     DAT 42, 'A', "loha! ", STR (String.uppercase "woah");
+    (* underscores are equivalent to 0. *)
+    DAT _, 1, _, 2, _, _, 3;
+    (* underscores at the end of assembly are ignored.
+     * (but will affect the label positions thereafter) *)
+    DAT _, _, _, _;
 %datend:
+];;
+
+hexdump_asm "TIMES prefix and ORG/ALIGN extensions" [
+    DAT 3 TIMES 1;                  (* = DAT 1, 1, 1 *)
+    DAT (1+1) TIMES "123";          (* = DAT "123", "123" *)
+%label:
+    DAT %label TIMES 0xffff;        (* = DAT 9 TIMES 0xffff *)
+    DAT ((-%_) AND 0xf) TIMES _;    (* align to next 16 byte boundary *)
+    ALIGN 16;                       (* same as above, in this case no-op *)
+    BRK;
+    ALIGN 16;                       (* will put 15 more zeroes *)
+
+    ORG 0x80;                       (* will put zeroes until PC reaches 0x80 *)
+    SET A, (%eof-%_);               (* = SET A, 0x80 *)
+    BRK;
+
+    ORG 0x100;                      (* this won't extend the binary *)
+%eof:
+    (*
+    ORG 0x30;                       (* this will result in an error *)
+    *)
 ];;
 
 hexdump_asm ~origin:0x0136 "SHORT/LONG immediates, non-zero origin" [

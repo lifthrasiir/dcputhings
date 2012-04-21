@@ -47,7 +47,7 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         List.fold_left folder <:expr< [] >> defined
 
     EXTEND Gram
-        GLOBAL: a_LIDENT a_STRING expr;
+        GLOBAL: a_LIDENT a_STRING a_INT a_CHAR expr;
 
         asmbarelabel:
         [
@@ -207,6 +207,7 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
             | "("; e = asmexpr LEVEL "+"; ")" -> <:expr< $e$ >>
             | "(%"; e = asmexpr0 LEVEL "+"; ")" -> <:expr< $e$ >>
             | "#"; e = expr LEVEL "simple" -> <:expr< $e$ >>
+            | "_" -> <:expr< DcpuAsm.AsmExpr__.blank >>
             | i = val_longident -> <:expr< DcpuAsm.AsmExpr__.imm $id:i$ >>
             ]
         |
@@ -239,23 +240,33 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
             ]
         ];
 
+        asmdatum:
+        [
+            [ cnt = asmoperand; "TIMES"; s = a_STRING ->
+              <:expr< DcpuAsm.AsmExpr__.times $cnt$
+                                              (DcpuAsm.AsmExpr__.str $str:s$) >>
+            | cnt = asmoperand; "TIMES"; e = asmoperand ->
+              <:expr< DcpuAsm.AsmExpr__.times $cnt$ $e$ >>
+            | s = a_STRING ->
+              <:expr< DcpuAsm.AsmExpr__.str $str:s$ >>
+            | e = asmoperand ->
+              <:expr< $e$ >>
+            ]
+        ];
+
         asmdata:
         [
-            [ ","; s = a_STRING; tail = asmdata ->
-              <:expr< DcpuAsm.AsmExpr__.str $str:s$ :: $tail$ >>
-            | ","; e = asmoperand; tail = asmdata ->
-              <:expr< $e$ :: $tail$ >>
-            | OPT "," -> <:expr< [] >>
+            [ ","; datum = asmdatum; tail = asmdata ->
+              <:expr< $datum$ :: $tail$ >>
+            | OPT "," ->
+              <:expr< [] >>
             ]
         ];
 
         asmstmt:
         [
-            [ "DAT"; s = a_STRING; tail = asmdata ->
-              <:expr< DcpuAsm.Asm__.dat (DcpuAsm.AsmExpr__.str $str:s$ ::
-                                         $tail$) >>
-            | "DAT"; e = asmoperand; tail = asmdata ->
-              <:expr< DcpuAsm.Asm__.dat ($e$ :: $tail$) >>
+            [ "DAT"; datum = asmdatum; tail = asmdata ->
+              <:expr< DcpuAsm.Asm__.dat ($datum$ :: $tail$) >>
             | "SET"; a = asmoperand; ","; b = asmoperand ->
               <:expr< DcpuAsm.Asm__.set $a$ $b$ >>
             | "ADD"; a = asmoperand; ","; b = asmoperand ->
@@ -290,22 +301,26 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
               <:expr< DcpuAsm.Asm__.jsr $a$ >>
 
             (* various helpers *)
-            | "PASS" ->
-              <:expr< DcpuAsm.Asm__.block [] >>
-            | "NOP" ->
-              <:expr< DcpuAsm.Asm__.nop >>
-            | "JMP"; a = asmoperand ->
-              <:expr< DcpuAsm.Asm__.jmp $a$ >>
-            | "PUSH"; a = asmoperand ->
-              <:expr< DcpuAsm.Asm__.set DcpuAsm.AsmExpr__.push $a$ >>
-            | "POP"; a = asmoperand ->
-              <:expr< DcpuAsm.Asm__.set $a$ DcpuAsm.AsmExpr__.pop >>
-            | "BRK" ->
-              <:expr< DcpuAsm.Asm__.sub (DcpuAsm.AsmExpr__.reg DcpuAsm.PC)
-                                        (DcpuAsm.AsmExpr__.imm 1) >>
-            | "HLT" ->
-              <:expr< DcpuAsm.Asm__.sub (DcpuAsm.AsmExpr__.reg DcpuAsm.PC)
-                                        (DcpuAsm.AsmExpr__.imm 1) >>
+            | "PASS" -> <:expr< DcpuAsm.Asm__.block [] >>
+            | "ORG"; origin = a_INT ->
+              let origin0 = int_of_string origin in
+              if origin0 < 0 || origin0 >= 0x10000 then
+                  raise (Stream.Error (Printf.sprintf "Invalid origin %#x"
+                                                      origin0));
+              <:expr< DcpuAsm.Asm__.org $int:origin$ >>
+            | "ALIGN"; alignment = a_INT ->
+              let alignment0 = int_of_string alignment in
+              if alignment0 < 1 || alignment0 >= 0x10000 then
+                  raise (Stream.Error (Printf.sprintf "Invalid alignment %#x"
+                                                      alignment0));
+              <:expr< DcpuAsm.Asm__.align $int:alignment$ >>
+            | "NOP" -> <:expr< DcpuAsm.Asm__.nop >>
+            | "JMP"; a = asmoperand -> <:expr< DcpuAsm.Asm__.jmp $a$ >>
+            | "PUSH"; a = asmoperand -> <:expr< DcpuAsm.Asm__.push $a$ >>
+            | "POP"; a = asmoperand -> <:expr< DcpuAsm.Asm__.pop $a$ >>
+            | "RET" -> <:expr< DcpuAsm.Asm__.ret >>
+            | "BRK" -> <:expr< DcpuAsm.Asm__.brk >>
+            | "HLT" -> <:expr< DcpuAsm.Asm__.hlt >>
             ]
         ];
 

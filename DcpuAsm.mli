@@ -50,8 +50,9 @@ type value =
 val string_of_value : value -> string
 
 type instr =
-    | Dat of expr
-    | DatStr of string
+    | Dat of expr * expr
+    | DatStr of expr * int list
+    | Res of expr
     | Set of value * value
     | Add of value * value
     | Sub of value * value
@@ -88,6 +89,7 @@ module AsmExpr__ : sig
     val peek  : asmexpr
     val pop   : asmexpr
     val label : label -> asmexpr
+    val blank : asmexpr
     val mem   : asmexpr -> asmexpr
     val neg   : asmexpr -> asmexpr
     val not_  : asmexpr -> asmexpr
@@ -101,6 +103,7 @@ module AsmExpr__ : sig
     val xor   : asmexpr -> asmexpr -> asmexpr
     val shl   : asmexpr -> asmexpr -> asmexpr
     val shr   : asmexpr -> asmexpr -> asmexpr
+    val times : asmexpr -> asmexpr -> asmexpr
 end
 
 val parse_asmexpr : asmexpr -> value * label option
@@ -109,7 +112,8 @@ val parse_asmexpr : asmexpr -> value * label option
 (* Assembly Statements. (e.g. SUB SP, 1) *)
 
 type stmt =
-    | Nothing of unit
+    | Nothing
+    | Empty of int
     | Static of int list
     | Dynamic of instr * int * int
     | Labeled of label * stmt
@@ -136,10 +140,18 @@ module Asm__ : sig
     val ifg   : asmexpr -> asmexpr -> stmt
     val ifb   : asmexpr -> asmexpr -> stmt
     val jsr   : asmexpr -> stmt
-    val nop   : stmt
-    val jmp   : asmexpr -> stmt
     val label : string -> stmt -> stmt
     val block : stmt list -> stmt
+
+    val org   : int -> stmt
+    val align : int -> stmt
+    val nop   : stmt
+    val jmp   : asmexpr -> stmt
+    val push  : asmexpr -> stmt
+    val pop   : asmexpr -> stmt
+    val ret   : stmt
+    val brk   : stmt
+    val hlt   : stmt
 end
 
 (**********************************************************************)

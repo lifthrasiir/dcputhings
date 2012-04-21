@@ -2,6 +2,14 @@
  * Written by Kang Seonghoon. See LICENSE for the full license statement.
  *)
 
+let repeat n l =
+    let rec recur n revl acc =
+        if n > 0 then
+            recur (n-1) revl (List.rev_append revl acc)
+        else
+            acc
+    in recur n (List.rev l) []
+
 (**********************************************************************)
 (* Assembly AST. *)
 
@@ -185,30 +193,36 @@ let eval_value resolve = function
 
 (* DCPU-16 instructions. *)
 type instr =
-    | Dat of expr
-    | DatStr of string
-    | Set of value * value
-    | Add of value * value
-    | Sub of value * value
-    | Mul of value * value
-    | Div of value * value
-    | Mod of value * value
-    | Shl of value * value
-    | Shr of value * value
-    | And of value * value
-    | Bor of value * value
-    | Xor of value * value
-    | Ife of value * value
-    | Ifn of value * value
-    | Ifg of value * value
-    | Ifb of value * value
-    | Jsr of value
-    | Jmp of value              (* not a real opcode *)
+    | Dat of expr * expr        (* DAT [expr TIMES] expr (pseudo) *)
+    | DatStr of expr * int list (* DAT [expr TIMES] "string" (pseudo) *)
+    | Res of expr               (* DAT [expr TIMES] _ (pseudo) *)
+    | Set of value * value      (* SET lhs, rhs *)
+    | Add of value * value      (* ADD lhs, rhs *)
+    | Sub of value * value      (* SUB lhs, rhs *)
+    | Mul of value * value      (* MUL lhs, rhs *)
+    | Div of value * value      (* DIV lhs, rhs *)
+    | Mod of value * value      (* MOD lhs, rhs *)
+    | Shl of value * value      (* SHL lhs, rhs *)
+    | Shr of value * value      (* SHR lhs, rhs *)
+    | And of value * value      (* AND lhs, rhs *)
+    | Bor of value * value      (* BOR lhs, rhs *)
+    | Xor of value * value      (* XOR lhs, rhs *)
+    | Ife of value * value      (* IFE lhs, rhs *)
+    | Ifn of value * value      (* IFN lhs, rhs *)
+    | Ifg of value * value      (* IFG lhs, rhs *)
+    | Ifb of value * value      (* IFB lhs, rhs *)
+    | Jsr of value              (* JSR lhs *)
+    | Jmp of value              (* JMP lhs (pseudo) *)
 
-let string_of_instr = function
-    | Dat (ENum v) -> "DAT " ^ string_of_int v
-    | Dat e -> "DAT " ^ string_of_expr e
-    | DatStr s -> Printf.sprintf "DAT %S" s
+let string_of_instr =
+    let times = function | ENum 1 -> ""
+                         | c -> string_of_expr c ^ " TIMES " in
+    function
+    | Dat (c,e) -> "DAT " ^ times c ^ string_of_expr e
+    | DatStr (c,s) ->
+        let data = List.map (fun v -> Printf.sprintf "%x" v) s in
+        "DAT " ^ times c ^ "(" ^ (String.concat ", " data) ^ ")"
+    | Res c -> "DAT " ^ times c ^ "_"
     | Set (a,b) -> "SET " ^ string_of_value a ^ ", " ^ string_of_value b
     | Add (a,b) -> "ADD " ^ string_of_value a ^ ", " ^ string_of_value b
     | Sub (a,b) -> "SUB " ^ string_of_value a ^ ", " ^ string_of_value b
@@ -229,8 +243,9 @@ let string_of_instr = function
 
 let force_instr force =
     function
-    | Dat e -> Dat e
-    | DatStr s -> DatStr s
+    | Dat (c,e) -> Dat (c,e)
+    | DatStr (c,s) -> DatStr (c,s)
+    | Res c -> Res c
     | Set (a,b) -> Set (force a, force b)
     | Add (a,b) -> Add (force a, force b)
     | Sub (a,b) -> Sub (force a, force b)
@@ -253,27 +268,29 @@ let force_shorter_instr = force_instr force_shorter_value
 let force_longer_instr = force_instr force_longer_value
 
 let eval_instr resolve =
-    let eval = eval_value resolve in
+    let evale = eval_expr resolve in
+    let evalv = eval_value resolve in
     function
-    | Dat e -> Dat (eval_expr resolve e)
-    | DatStr s -> DatStr s
-    | Set (a,b) -> Set (eval a, eval b)
-    | Add (a,b) -> Add (eval a, eval b)
-    | Sub (a,b) -> Sub (eval a, eval b)
-    | Mul (a,b) -> Mul (eval a, eval b)
-    | Div (a,b) -> Div (eval a, eval b)
-    | Mod (a,b) -> Mod (eval a, eval b)
-    | Shl (a,b) -> Shl (eval a, eval b)
-    | Shr (a,b) -> Shr (eval a, eval b)
-    | And (a,b) -> And (eval a, eval b)
-    | Bor (a,b) -> Bor (eval a, eval b)
-    | Xor (a,b) -> Xor (eval a, eval b)
-    | Ife (a,b) -> Ife (eval a, eval b)
-    | Ifn (a,b) -> Ifn (eval a, eval b)
-    | Ifg (a,b) -> Ifg (eval a, eval b)
-    | Ifb (a,b) -> Ifb (eval a, eval b)
-    | Jsr a -> Jsr (eval a)
-    | Jmp a -> Jmp (eval a)
+    | Dat (c,e) -> Dat (evale c, evale e)
+    | DatStr (c,s) -> DatStr (evale c, s)
+    | Res c -> Res (evale c)
+    | Set (a,b) -> Set (evalv a, evalv b)
+    | Add (a,b) -> Add (evalv a, evalv b)
+    | Sub (a,b) -> Sub (evalv a, evalv b)
+    | Mul (a,b) -> Mul (evalv a, evalv b)
+    | Div (a,b) -> Div (evalv a, evalv b)
+    | Mod (a,b) -> Mod (evalv a, evalv b)
+    | Shl (a,b) -> Shl (evalv a, evalv b)
+    | Shr (a,b) -> Shr (evalv a, evalv b)
+    | And (a,b) -> And (evalv a, evalv b)
+    | Bor (a,b) -> Bor (evalv a, evalv b)
+    | Xor (a,b) -> Xor (evalv a, evalv b)
+    | Ife (a,b) -> Ife (evalv a, evalv b)
+    | Ifn (a,b) -> Ifn (evalv a, evalv b)
+    | Ifg (a,b) -> Ifg (evalv a, evalv b)
+    | Ifb (a,b) -> Ifb (evalv a, evalv b)
+    | Jsr a -> Jsr (evalv a)
+    | Jmp a -> Jmp (evalv a)
 
 let eval_instr_with_pc cur resolve =
     let eval = eval_expr resolve in
@@ -327,28 +344,30 @@ let eval_instr_with_pc cur resolve =
 (* Assembly Expressions. (e.g. [A+0x42]) *)
 
 type asmexpr =
-    | AsmImm of int
-    | AsmShort of asmexpr
-    | AsmLong of asmexpr
-    | AsmStr of string
-    | AsmReg of reg
-    | AsmPush of unit
-    | AsmPeek of unit
-    | AsmPop of unit
-    | AsmLabel of label
-    | AsmMem of asmexpr
-    | AsmNeg of asmexpr
-    | AsmNot of asmexpr
-    | AsmAdd of asmexpr * asmexpr
-    | AsmSub of asmexpr * asmexpr
-    | AsmMul of asmexpr * asmexpr
-    | AsmDiv of asmexpr * asmexpr
-    | AsmMod of asmexpr * asmexpr
-    | AsmAnd of asmexpr * asmexpr
-    | AsmOr  of asmexpr * asmexpr
-    | AsmXor of asmexpr * asmexpr
-    | AsmShl of asmexpr * asmexpr
-    | AsmShr of asmexpr * asmexpr
+    | AsmImm of int                 (* 42 *)
+    | AsmShort of asmexpr           (* SHORT expr *)
+    | AsmLong of asmexpr            (* LONG expr *)
+    | AsmStr of string              (* "string" *)
+    | AsmReg of reg                 (* A, B, C, X, Y, Z, I, J, PC, SP, O *)
+    | AsmPush                       (* [--SP] or PUSH *)
+    | AsmPeek                       (* [SP] or PEEK *)
+    | AsmPop                        (* [SP++] or POP *)
+    | AsmLabel of label             (* %label *)
+    | AsmBlank                      (* _ *)
+    | AsmTimes of asmexpr * asmexpr (* expr TIMES expr *)
+    | AsmMem of asmexpr             (* [expr] *)
+    | AsmNeg of asmexpr             (* -expr *)
+    | AsmNot of asmexpr             (* NOT expr *)
+    | AsmAdd of asmexpr * asmexpr   (* lhs + rhs *)
+    | AsmSub of asmexpr * asmexpr   (* lhs - rhs *)
+    | AsmMul of asmexpr * asmexpr   (* lhs * rhs *)
+    | AsmDiv of asmexpr * asmexpr   (* lhs DIV rhs *)
+    | AsmMod of asmexpr * asmexpr   (* lhs MOD rhs *)
+    | AsmAnd of asmexpr * asmexpr   (* lhs AND rhs *)
+    | AsmOr  of asmexpr * asmexpr   (* lhs OR rhs *)
+    | AsmXor of asmexpr * asmexpr   (* lhs XOR rhs *)
+    | AsmShl of asmexpr * asmexpr   (* lhs SHL rhs *)
+    | AsmShr of asmexpr * asmexpr   (* lhs SHR rhs *)
 
 module AsmExpr__ = struct
     let imm v      = AsmImm v
@@ -356,10 +375,12 @@ module AsmExpr__ = struct
     let long e     = AsmLong e
     let str s      = AsmStr s
     let reg r      = AsmReg r
-    let push       = AsmPush ()
-    let peek       = AsmPeek ()
-    let pop        = AsmPop ()
+    let push       = AsmPush
+    let peek       = AsmPeek
+    let pop        = AsmPop
     let label l    = AsmLabel l
+    let blank      = AsmBlank
+    let times c e  = AsmTimes (c,e)
     let mem  e     = AsmMem e
     let neg  e     = AsmNeg e
     let not_ e     = AsmNot e
@@ -412,10 +433,12 @@ let parse_asmexpr e =
                 | Some l' -> l'
             in ([], ELabel l, true)
         | AsmLabel l -> ([], ELabel l, false)
+        | AsmBlank -> failwith "parse_asmexpr: _ can only be used in DAT"
+        | AsmTimes _ -> failwith "parse_asmexpr: TIMES can only be used in DAT"
         | AsmMem e -> failwith "parse_asmexpr: nested memory reference"
-        | AsmPop _ -> failwith "parse_asmexpr: unexpected POP"
-        | AsmPeek _ -> failwith "parse_asmexpr: unexpected PEEK"
-        | AsmPush _ -> failwith "parse_asmexpr: unexpected PUSH"
+        | AsmPop -> failwith "parse_asmexpr: unexpected POP"
+        | AsmPeek -> failwith "parse_asmexpr: unexpected PEEK"
+        | AsmPush -> failwith "parse_asmexpr: unexpected PUSH"
 
         (* a basic bit of constant propagation. we won't do the AST rotation
          * here, just make sure that we properly handle the linear combination
@@ -570,9 +593,9 @@ let parse_asmexpr e =
     in
 
     match e with
-    | AsmPush () -> (Push, None)
-    | AsmPeek () -> (Peek, None)
-    | AsmPop () -> (Pop, None)
+    | AsmPush -> (Push, None)
+    | AsmPeek -> (Peek, None)
+    | AsmPop -> (Pop, None)
     | AsmMem e ->
         let (regs, e', hasself) = canonicalize e in
         let v =
@@ -613,7 +636,8 @@ let parse_asmexpr e =
 (* Assembly Statements. (e.g. SUB SP, 1) *)
 
 type stmt =
-    | Nothing of unit
+    | Nothing
+    | Empty of int
     | Static of int list
     | Dynamic of instr * int * int    (* instr, min length, max length *)
     | Labeled of label * stmt
@@ -621,7 +645,9 @@ type stmt =
 
 let print_stmt s =
     let rec show indent = function
-        | Nothing () -> ()
+        | Nothing -> ()
+        | Empty v ->
+            Printf.printf "%s  DAT %d TIMES _\n" indent v
         | Static cs ->
             let data = List.map (fun c -> Printf.sprintf "0x%04x" c) cs in
             Printf.printf "%s  DAT %s\n" indent (String.concat ", " data)
@@ -637,6 +663,7 @@ let print_stmt s =
 
 type compile_result =
     | Done of int list
+    | DoneEmpty of int
     | NotYet of int * int       (* min length, max length *)
 
 let compile_value = function
@@ -673,6 +700,7 @@ let compile_instr =
         match compile_value a with
         | Done [] -> failwith "impossible"
         | Done (a::anext) -> Done ((a lsl 10) lor (o lsl 4) :: anext)
+        | DoneEmpty _ -> failwith "impossible"
         | NotYet (amin,amax) -> NotYet (1+amin, 1+amax)
     in
 
@@ -684,6 +712,7 @@ let compile_instr =
         | Done (_::anext), NotYet (bmin,bmax) ->
             let alen = List.length anext in
             NotYet (1+alen+bmin, 1+alen+bmax)
+        | DoneEmpty _, _ | _, DoneEmpty _ -> failwith "impossible"
         | NotYet (amin,amax), Done (_::bnext) ->
             let blen = List.length bnext in
             NotYet (1+amin+blen, 1+amax+blen)
@@ -695,34 +724,47 @@ let compile_instr =
         match compile_value a with
         | Done [] -> failwith "impossible"
         | Done (a::anext) -> Done ((a lsl 10) lor 0x01c1 :: anext)
+        | DoneEmpty _ -> failwith "impossible"
         | NotYet (amin,amax) -> NotYet (max 1 amin, 1+amax)
     in
 
     function
-    | Dat (ENum v) -> Done [v land 0xffff]
-    | Dat e       -> NotYet (1, 1)
-    | DatStr s    -> let t = ref [] in
-                     for i = String.length s - 1 downto 0 do
-                         t := int_of_char s.[i] :: !t
-                     done;
-                     Done !t
-    | Set (a,b)   -> binary  1 a b
-    | Add (a,b)   -> binary  2 a b
-    | Sub (a,b)   -> binary  3 a b
-    | Mul (a,b)   -> binary  4 a b
-    | Div (a,b)   -> binary  5 a b
-    | Mod (a,b)   -> binary  6 a b
-    | Shl (a,b)   -> binary  7 a b
-    | Shr (a,b)   -> binary  8 a b
-    | And (a,b)   -> binary  9 a b
-    | Bor (a,b)   -> binary 10 a b
-    | Xor (a,b)   -> binary 11 a b
-    | Ife (a,b)   -> binary 12 a b
-    | Ifn (a,b)   -> binary 13 a b
-    | Ifg (a,b)   -> binary 14 a b
-    | Ifb (a,b)   -> binary 15 a b
-    | Jsr a       -> unary   1 a
-    | Jmp a       -> jump      a
+    | Dat (ENum c, ENum v) ->
+        if c < 0 then failwith "compile_instr: TIMES with a negative count";
+        Done (repeat c [v land 0xffff])
+    | Dat (ENum c, e) ->
+        if c < 0 then failwith "compile_instr: TIMES with a negative count";
+        NotYet (c, c)
+    | Dat (ce, e) ->
+        NotYet (0, 65535)
+    | DatStr (ENum c, s) ->
+        if c < 0 then failwith "compile_instr: TIMES with a negative count";
+        Done (repeat c s)
+    | DatStr (ce, s) ->
+        NotYet (0, 65535)
+    | Res (ENum v) ->
+        if v < 0 then failwith "compile_instr: TIMES with a negative count";
+        DoneEmpty v
+    | Res c ->
+        NotYet (0, 65535)
+
+    | Set (a,b) -> binary  1 a b
+    | Add (a,b) -> binary  2 a b
+    | Sub (a,b) -> binary  3 a b
+    | Mul (a,b) -> binary  4 a b
+    | Div (a,b) -> binary  5 a b
+    | Mod (a,b) -> binary  6 a b
+    | Shl (a,b) -> binary  7 a b
+    | Shr (a,b) -> binary  8 a b
+    | And (a,b) -> binary  9 a b
+    | Bor (a,b) -> binary 10 a b
+    | Xor (a,b) -> binary 11 a b
+    | Ife (a,b) -> binary 12 a b
+    | Ifn (a,b) -> binary 13 a b
+    | Ifg (a,b) -> binary 14 a b
+    | Ifb (a,b) -> binary 15 a b
+    | Jsr a     -> unary   1 a
+    | Jmp a     -> jump      a
 
 let attach_label l0 s =
     match l0 with
@@ -732,6 +774,7 @@ let attach_label l0 s =
 let make_instr ins =
     match compile_instr ins with
     | Done cs -> Static cs
+    | DoneEmpty v -> Empty v
     | NotYet (min,max) -> Dynamic (ins,min,max)
 
 let make_unary_instr f a =
@@ -747,12 +790,43 @@ let make_binary_instr f a b =
 
 module Asm__ = struct
     let dat l =
-        let do_one = function
+        let rec do_one = function
             | AsmStr s ->
-                make_instr (DatStr s)
+                let t = ref [] in
+                for i = String.length s - 1 downto 0 do
+                    t := int_of_char s.[i] :: !t
+                done;
+                make_instr (DatStr (ENum 1, !t))
+            | AsmBlank ->
+                Empty 1
+            | AsmTimes (c,e) ->
+                let (c,cself) =
+                    match parse_asmexpr c with
+                    | Lit c', cself -> (c', cself)
+                    | _, _ -> failwith "invalid values for DAT" in
+                let (e,eself) =
+                    match do_one e with
+                    | Labeled (l,e') -> (e', Some l)
+                    | e' -> (e', None) in
+                let s =
+                    match c, e with
+                    | ENum c, Empty v ->
+                        Empty (v*c)
+                    | ENum c, Static cs ->
+                        Static (repeat c cs)
+                    | ENum c, Dynamic (Dat (c',e),min,max) ->
+                        Dynamic (Dat (EMul (ENum c, c'), e), c * min, c * max)
+                    | ENum c, Dynamic (DatStr (c',s),min,max) ->
+                        Dynamic (DatStr (EMul (ENum c, c'), s), c * min, c * max)
+                    | ce, Empty v ->
+                        Dynamic (Res (EMul (ENum v, ce)), 0, 65535)
+                    | ce, Static cs ->
+                        Dynamic (DatStr (ce,cs), 0, 65536)
+                    | _, _ -> failwith "TODO"
+                in attach_label cself (attach_label eself s)
             | a ->
                 let build = function
-                    | Lit e -> Dat e
+                    | Lit e -> Dat (ENum 1, e)
                     | _ -> failwith "invalid values for DAT"
                 in make_unary_instr build a
         in match l with
@@ -775,14 +849,56 @@ module Asm__ = struct
     let ifg  = make_binary_instr (fun a b -> Ifg (a,b))
     let ifb  = make_binary_instr (fun a b -> Ifb (a,b))
     let jsr  = make_unary_instr  (fun a   -> Jsr a)
-    let nop  = make_instr        (Set (Reg A, Reg A))
-    let jmp  = make_unary_instr  (fun a   -> Jmp a)
 
     let label l s = Labeled (l,s)
 
     let block = function
-        | [] -> Nothing ()
+        | [] -> Nothing
         | ss -> Blocked ss
+
+    (* various pseudo-instructions *)
+    let org v =
+        let v = v land 0xffff in
+        let label = gen_selflabel () in
+        (* ORG v => %label: DAT (v - %label) TIMES _ *)
+        Labeled (label,
+            Dynamic (Res (ESub (ENum v, ELabel label)), 0, v))
+
+    let align v =
+        if v <= 0 || v >= 0x10000 then
+            failwith ("invalid alignment " ^ string_of_int v)
+        else if v = 1 then
+            Blocked [] (* ALIGN 1 does not have any effect *)
+        else
+            let label = gen_selflabel () in
+            (* ALIGN v => %label: DAT ((v - %label MOD v) MOD v) TIMES _ *)
+            Labeled (label,
+                Dynamic (Res (EMod (ESub (ENum v, EMod (ELabel label, ENum v)),
+                                    ENum v)),
+                         0, v - 1))
+
+    let nop = Static [0x0001] (* SET A, A *)
+    let jmp = make_unary_instr (fun a -> Jmp a)
+
+    let is_stack_operand = function
+        | AsmPush | AsmPeek | AsmPop -> true
+        | _ -> false
+
+    let push a =
+        if is_stack_operand a then
+            failwith "PUSH with a stack operand will act in an unexpected way; \
+                      use \"SET PUSH, <operand>\" if you really want it.";
+        make_unary_instr (fun a -> Set (Push, a)) a
+
+    let pop a =
+        if is_stack_operand a then
+            failwith "POP with a stack operand will act in an unexpected way; \
+                      use \"SET <operand>, POP\" if you really want it.";
+        make_unary_instr (fun a -> Set (Push, a)) a
+
+    let ret = Static [0x61c1] (* SET PC, POP *)
+    let brk = Static [0x85c3] (* SUB PC, 1 *)
+    let hlt = Static [0x85c3] (* SUB PC, 1 *)
 end
 
 (**********************************************************************)
@@ -793,22 +909,31 @@ let show_mapping mapping =
     Printf.printf "\n"
 
 let resolve_labels origin oldmapping ss =
+    let newmapping = Hashtbl.create 4 in
+
+    (* newmapping first, oldmapping next. newmapping is required for resolving
+     * instructions like "%self: DAT (0x100-%self) TIMES _" which will require
+     * the position of %self in the very first pass. *)
     let resolve l =
         try
-            ENum (Hashtbl.find oldmapping l)
+            ENum (Hashtbl.find newmapping l)
         with Not_found ->
-            ELabel l
+            try
+                ENum (Hashtbl.find oldmapping l)
+            with Not_found ->
+                ELabel l
     in
-
-    let newmapping = Hashtbl.create 4 in
 
     let rec loop cur resolved acc cont =
         if cur > 0xffff then
             failwith "asm: the address exceeds the memory space";
         function
         | [] -> cont cur resolved acc
-        | Nothing () :: t ->
+        | Nothing :: t ->
             loop cur resolved acc cont t
+        | Empty v :: t ->
+            let acc = Empty v :: acc in
+            loop (cur + v) resolved acc cont t
         | Static cs :: t ->
             let cur = cur + List.length cs in
             let acc = Static cs :: acc in
@@ -831,6 +956,9 @@ let resolve_labels origin oldmapping ss =
                     let cur = cur + List.length cs in
                     let acc = Static cs :: acc in
                     loop cur resolved acc cont t
+                | DoneEmpty v ->
+                    let acc = Empty v :: acc in
+                    loop (cur + v) resolved acc cont t
                 | NotYet (min,max) ->
                     (* if the length of this instruction does change then we
                      * assume the maximum length. *)
@@ -866,6 +994,7 @@ let remap_and_flatten resolve remap_label remap_instr ss =
             let ins = eval_instr resolve i in
             begin match compile_instr ins with
             | Done cs -> Static cs :: t
+            | DoneEmpty v -> Empty v :: t
             | NotYet (min,max) -> Dynamic (remap_instr ins,min,max) :: t
             end
         | ss -> ss
@@ -876,7 +1005,7 @@ let remap_and_flatten resolve remap_label remap_instr ss =
      * acc: stmt accumulator, does not List.rev'ed automatically *)
     let rec inner_static css f acc ss =
         match remap_head ss with
-        | Nothing () :: t ->
+        | Nothing :: t ->
             inner_static css f acc t
         | Static cs :: t ->
             inner_static (cs::css) f acc t
@@ -891,14 +1020,32 @@ let remap_and_flatten resolve remap_label remap_instr ss =
             else
                 inner id (f (Static cs) :: acc) ss
 
+    and inner_empty gap f acc ss =
+        match remap_head ss with
+        | Nothing :: t ->
+            inner_empty gap f acc t
+        | Empty v :: t ->
+            inner_empty (gap+v) f acc t
+        | Blocked ss :: t ->
+            inner_empty gap f acc (ss @ t)
+        | Labeled (l,s) :: t when remap_label l = None ->
+            inner_empty gap f acc (s::t)
+        | ss ->
+            if gap = 0 then
+                inner f acc ss
+            else
+                inner id (f (Empty gap) :: acc) ss
+
     and inner f acc ss =
         match remap_head ss with
         | [] ->
             (* adds a dummy stmt if there are pending labels at the end *)
-            let remain = f (Nothing ()) in
-            if remain = Nothing () then acc else remain::acc
-        | Nothing () :: t ->
+            let remain = f Nothing in
+            if remain = Nothing then acc else remain::acc
+        | Nothing :: t ->
             inner f acc t
+        | Empty v :: t ->
+            inner_empty v f acc t
         | Static cs :: t ->
             inner_static [cs] f acc t
         | Dynamic (i,min,max) :: t ->
@@ -986,17 +1133,33 @@ let to_words s =
             end
     in
 
-    let rec emit = function
+    let skip gap =
+        let rec nextsize target size =
+            if target <= size then size else nextsize target (2*size) in
+        if !off + gap <= !size then
+            ()
+        else begin
+            let size' = nextsize (!off + gap) !size in
+            let arr' = Array.make size' 0 in
+            Array.blit !arr 0 arr' 0 !size;
+            size := size'; arr := arr'
+        end;
+        off := !off + gap
+    in
+
+    let rec emit gap = function
         | [] -> ()
-        | Nothing () :: t -> emit t
+        | Nothing :: t -> emit gap t
+        | Empty v :: t -> emit (gap+v) t
         | Static cs :: t ->
+            skip gap;
             let (off',size',arr') = copy !off !size !arr cs in
-            off := off'; size := size'; arr := arr'; emit t
+            off := off'; size := size'; arr := arr'; emit 0 t
         | Dynamic (i,min,max) :: t ->
             failwith "to_words: cannot convert Dynamic stmt to an word"
-        | Labeled (l,s) :: t -> emit (s::t)
-        | Blocked ss :: t -> emit ss; emit t
-    in emit [s]; Array.sub !arr 0 !off
+        | Labeled (l,s) :: t -> emit gap (s::t)
+        | Blocked ss :: t -> emit gap (ss @ t)
+    in emit 0 [s]; Array.sub !arr 0 !off
 
 let to_binary_le s =
     let words = to_words s in

@@ -52,8 +52,8 @@ DcpuAsm supports the following instructions (and pseudo-instructions):
 * Basic opcodes: `SET`, `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `SHL`, `SHR`,
   `AND`, `BOR`, `XOR`, `IFE`, `IFN`, `IFG`, `IFB`.
 * Non-basic opcodes: `JSR`
-* Raw data: `DAT`
-* Syntactic extensions: `NOP`, `JMP`, `PUSH`, `POP`, `BRK`/`HLT`
+* Raw data: `DAT`, `ORG`, `ALIGN`
+* Syntactic extensions: `NOP`, `JMP`, `PUSH`, `POP`, `BRK`/`HLT`, `RET`
 * Empty opcode (i.e. no output at all): `PASS`
 
 Basic opcodes has two arguments, and non-basic opcodes has one of them.
@@ -62,6 +62,19 @@ Multiple arguments are separated with `,` as much like other assemblers.
 `DAT` has one or more arguments. The argument can be a typical immediate (see
 below for the syntax) which occupies exactly one word, or a string which
 occupies the same number of words (so that `"ok"` equals to `'o', 'k'`).
+One can also use `_` for placeholders which value can be ignored; it is mostly
+equivalent to `0` but `_`s at the end of the binary will be ignored.
+Arguments can have a `TIMES` prefix as like `DAT 3 TIMES 0x1234`, where the
+repeat count can be any expression including labels. Repeating string is also
+allowed (e.g. `3 TIMES "hello?"`).
+
+`ORG x` is equivalent to `DAT (x-%_) TIMES _`, and will set the current
+assembly position to `x` if possible. It will raise an error if it is
+impossible. `x` should be a positive integer.
+
+`ALIGN x` is equivalent to `DAT ((x-(%_ MOD x)) MOD x) TIMES _`, and will set
+the current assembly position to the next multiple of `x`. (Therefore it will
+add at most `x-1` zeroes.)
 
 `NOP` is equivalent to `SET A, A`. It does nothing but take one cycle. While
 DCPU-16 has lots of nops, this encoding is chosen because of the simplicity of
@@ -71,14 +84,19 @@ nop.
 `JMP a` sets the PC to `a` in the fastest or at least shortest way. There are
 4 possible encodings for `JMP`: `SET PC, ...`, `XOR PC, ...`, `AND PC, ...`
 and `SUB PC, ...`. (Among them `XOR` is fastest but not applicable for all
-cases.) Note that the plain `SET PC, a` won't be optimized.
+cases.) Note that the plain `SET PC, a` won't be optimized; you must
+explicitly use `JMP a` instead.
 
 `PUSH a` is equivalent to `SET PUSH, a`. `POP a` is equivalent to `SET a,
 POP`. You can also use `[SP]` instead of `PEEK`. (But `[SP+<number>]` is still
-invalid.)
+invalid.) For these instructions `a` cannot be a stack operand as the
+evaluation order of stack operand is very unintuitive and prone to error.
 
 `BRK` or `HLT` is equivalent to `SUB PC, 1`. This forms a simple infinite
 loop, and used as a *de facto* instruction to terminate the emulator.
+
+`RET` is equivalent to `SET PC, POP`, and used for returning from the
+subroutine initiated by `JSR` instruction.
 
 `PASS` does not emit the binary at all; it can be used as a placeholder.
 
@@ -291,6 +309,5 @@ As always you should expect the following caveats:
   normal Ocaml code because `(%` will be treated as one token. (`( %label1`
   etc. will work.) The assembly syntax is specially crafted to separate those
   two, however. Any suggestions about this problem are welcomed.
-* `TIMES` prefix and `?` in the `DAT` pseudo-instruction is missing yet.
 * `DAT` is missing `*`-prefixed items.
 
