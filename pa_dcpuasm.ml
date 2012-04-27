@@ -201,7 +201,7 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
               <:expr< DcpuAsm.Expr.imm $int:v$ >>
             | v = a_CHAR ->
               <:expr< DcpuAsm.Expr.imm (int_of_char $chr:v$) >>
-            | "PICK"; e = expr LEVEL "+" ->
+            | "PICK"; e = asmexpr LEVEL "+" ->
               <:expr< DcpuAsm.Expr.pick $e$ >>
             | "["; e = asmexpr LEVEL "+"; "]" ->
               <:expr< DcpuAsm.Expr.mem $e$ >>

@@ -312,6 +312,7 @@ hexdump_asm "Shortcuts" [
     DAT 1, 2, 3, 4;
     PUSH A;                 (* same as SET PUSH, A; *)
     SET B, [SP];            (* same as SET B, PEEK; *)
+    SET [SP+3], B;          (* same as SET PICK 3, B; *)
     POP C;                  (* same as SET C, POP; *)
     JSR %dummy;
     BRK;                    (* same as SUB PC, 1; for now.
@@ -342,6 +343,17 @@ hexdump_asm "Immediate expressions and DAT extensions" [
     SET A, IMM (0x8000 - %datend);          (* longer form of immediate *)
     SET A, screen_base + 1;                 (* a single Ocaml identifier can be
                                              * used as an immediate *)
+
+    (* supports ordinary PUSH/POP/PEEK/PICK as well as [SP+...] notation.
+     * also checks for PUSH and POP being used in the correct operand. *)
+    SET PUSH, A;
+    SET PICK 3, PICK 4;
+    MUL PEEK, PEEK;
+    SET A, POP;
+    (*
+    SET A, PUSH;
+    SET POP, A;
+    *)
     BRK;
 
 %dat:

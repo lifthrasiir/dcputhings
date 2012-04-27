@@ -712,8 +712,8 @@ let parse_asmexpr e =
     | AsmMem (AsmAdd (AsmReg ((A|B|C|X|Y|Z|I|J|SP) as r), AsmNext))
     | AsmMem (AsmAdd (AsmNext, AsmReg ((A|B|C|X|Y|Z|I|J|SP) as r))) ->
         (MemRegNext r, None)
-    | AsmPeek -> do_memref (AsmMem (AsmReg SP))
-    | AsmPick e -> do_memref (AsmMem (AsmAdd (AsmReg SP, e)))
+    | AsmPeek -> do_memref (AsmReg SP)
+    | AsmPick e -> do_memref (AsmAdd (AsmReg SP, e))
     | AsmMem e -> do_memref e
     | e ->
         let (regs, e', hasself) = canonicalize e in
