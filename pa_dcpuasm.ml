@@ -23,9 +23,9 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         method used = used
 
         method expr = function
-            | <:expr< DcpuAsm.Asm__.label $str:label$ >> ->
+            | <:expr< DcpuAsm.Stmt.label $str:label$ >> ->
               Hashtbl.replace defined label (); self
-            | <:expr< DcpuAsm.AsmExpr__.label $str:label$ >> ->
+            | <:expr< DcpuAsm.Expr.label $str:label$ >> ->
               Hashtbl.replace used label (); self
             | e -> super#expr e
     end
@@ -52,11 +52,11 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         asmbarelabel:
         [
             [ label = a_LIDENT ->
-              <:expr< DcpuAsm.AsmExpr__.label $str:label$ >>
+              <:expr< DcpuAsm.Expr.label $str:label$ >>
             | "_" ->
-              <:expr< DcpuAsm.AsmExpr__.label "_" >>
+              <:expr< DcpuAsm.Expr.label "_" >>
             | "#"; e = expr LEVEL "simple" ->
-              <:expr< DcpuAsm.AsmExpr__.label $e$ >>
+              <:expr< DcpuAsm.Expr.label $e$ >>
             ]
         ];
 
@@ -82,14 +82,15 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
 
         asmreg: (* only one that can be used in memory references *)
         [
-            [ "A" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.A >>
-            | "B" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.B >>
-            | "C" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.C >>
-            | "X" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.X >>
-            | "Y" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.Y >>
-            | "Z" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.Z >>
-            | "I" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.I >>
-            | "J" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.J >>
+            [ "A" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.A >>
+            | "B" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.B >>
+            | "C" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.C >>
+            | "X" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.X >>
+            | "Y" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.Y >>
+            | "Z" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.Z >>
+            | "I" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.I >>
+            | "J" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.J >>
+            | "SP" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.SP >>
             ]
         ];
 
@@ -100,37 +101,37 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         |
             "+" LEFTA
             [ e1 = SELF; "+"; e2 = asmexpr LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.add $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.add $e1$ $e2$ >>
             | e1 = SELF; "+%"; e2 = asmexpr0 LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.add $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.add $e1$ $e2$ >>
             | e1 = SELF; "-"; e2 = asmexpr LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.sub $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.sub $e1$ $e2$ >>
             | e1 = SELF; "-%"; e2 = asmexpr0 LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.sub $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.sub $e1$ $e2$ >>
             | e1 = SELF; "OR"; e2 = asmexpr LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.or_ $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.or_ $e1$ $e2$ >>
             | e1 = SELF; "XOR"; e2 = asmexpr LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.xor $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.xor $e1$ $e2$ >>
             ]
         |
             "*" LEFTA
             [ e1 = SELF; "*"; e2 = asmexpr LEVEL "~-" ->
-              <:expr< DcpuAsm.AsmExpr__.mul $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.mul $e1$ $e2$ >>
             | e1 = SELF; "*%"; e2 = asmexpr0 LEVEL "~-" ->
-              <:expr< DcpuAsm.AsmExpr__.mul $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.mul $e1$ $e2$ >>
             | e1 = SELF; "DIV"; e2 = asmexpr LEVEL "shift" ->
-              <:expr< DcpuAsm.AsmExpr__.div $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.div $e1$ $e2$ >>
             | e1 = SELF; "MOD"; e2 = asmexpr LEVEL "shift" ->
-              <:expr< DcpuAsm.AsmExpr__.mod_ $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.mod_ $e1$ $e2$ >>
             | e1 = SELF; "AND"; e2 = asmexpr LEVEL "shift" ->
-              <:expr< DcpuAsm.AsmExpr__.and_ $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.and_ $e1$ $e2$ >>
             ]
         |
             "shift" LEFTA
             [ e1 = SELF; "SHL"; e2 = asmexpr LEVEL "~-" ->
-              <:expr< DcpuAsm.AsmExpr__.shl $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.shl $e1$ $e2$ >>
             | e1 = SELF; "SHR"; e2 = asmexpr LEVEL "~-" ->
-              <:expr< DcpuAsm.AsmExpr__.shr $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.shr $e1$ $e2$ >>
             ]
         |
             "~-" NONA
@@ -147,87 +148,91 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         asmexpr:
         [
             "top" NONA
-            [ "LONG"; e = asmexpr -> <:expr< DcpuAsm.AsmExpr__.long $e$ >>
-            | "SHORT"; e = asmexpr -> <:expr< DcpuAsm.AsmExpr__.short $e$ >>
+            [ "LONG"; e = asmexpr -> <:expr< DcpuAsm.Expr.long $e$ >>
+            | "SHORT"; e = asmexpr -> <:expr< DcpuAsm.Expr.short $e$ >>
             ]
         |
             "+" LEFTA
             [ e1 = SELF; "+"; e2 = asmexpr LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.add $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.add $e1$ $e2$ >>
             | e1 = SELF; "+%"; e2 = asmexpr0 LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.add $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.add $e1$ $e2$ >>
             | e1 = SELF; "-"; e2 = asmexpr LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.sub $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.sub $e1$ $e2$ >>
             | e1 = SELF; "-%"; e2 = asmexpr0 LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.sub $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.sub $e1$ $e2$ >>
             | e1 = SELF; "OR"; e2 = asmexpr LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.or_ $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.or_ $e1$ $e2$ >>
             | e1 = SELF; "XOR"; e2 = asmexpr LEVEL "*" ->
-              <:expr< DcpuAsm.AsmExpr__.xor $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.xor $e1$ $e2$ >>
             ]
         |
             "*" LEFTA
             [ e1 = SELF; "*"; e2 = asmexpr LEVEL "shift" ->
-              <:expr< DcpuAsm.AsmExpr__.mul $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.mul $e1$ $e2$ >>
             | e1 = SELF; "*%"; e2 = asmexpr0 LEVEL "shift" ->
-              <:expr< DcpuAsm.AsmExpr__.mul $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.mul $e1$ $e2$ >>
             | e1 = SELF; "DIV"; e2 = asmexpr LEVEL "shift" ->
-              <:expr< DcpuAsm.AsmExpr__.div $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.div $e1$ $e2$ >>
             | e1 = SELF; "MOD"; e2 = asmexpr LEVEL "shift" ->
-              <:expr< DcpuAsm.AsmExpr__.mod_ $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.mod_ $e1$ $e2$ >>
             | e1 = SELF; "AND"; e2 = asmexpr LEVEL "shift" ->
-              <:expr< DcpuAsm.AsmExpr__.and_ $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.and_ $e1$ $e2$ >>
             ]
         |
             "shift" LEFTA
             [ e1 = SELF; "SHL"; e2 = asmexpr LEVEL "~-" ->
-              <:expr< DcpuAsm.AsmExpr__.shl $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.shl $e1$ $e2$ >>
             | e1 = SELF; "SHR"; e2 = asmexpr LEVEL "~-" ->
-              <:expr< DcpuAsm.AsmExpr__.shr $e1$ $e2$ >>
+              <:expr< DcpuAsm.Expr.shr $e1$ $e2$ >>
             ]
         |
             "~-" NONA
             [ "-"; e = asmexpr LEVEL "asm simple" ->
-              <:expr< DcpuAsm.AsmExpr__.neg $e$ >>
+              <:expr< DcpuAsm.Expr.neg $e$ >>
             | "-%"; e = asmexpr0 LEVEL "asm simple" ->
-              <:expr< DcpuAsm.AsmExpr__.neg $e$ >>
+              <:expr< DcpuAsm.Expr.neg $e$ >>
             | "NOT"; e = asmexpr LEVEL "asm simple" ->
-              <:expr< DcpuAsm.AsmExpr__.not_ $e$ >>
+              <:expr< DcpuAsm.Expr.not_ $e$ >>
             ]
         |
             "asm simple"
             [ v = a_INT ->
-              <:expr< DcpuAsm.AsmExpr__.imm $int:v$ >>
+              <:expr< DcpuAsm.Expr.imm $int:v$ >>
             | v = a_CHAR ->
-              <:expr< DcpuAsm.AsmExpr__.imm (int_of_char $chr:v$) >>
+              <:expr< DcpuAsm.Expr.imm (int_of_char $chr:v$) >>
+            | "PICK"; e = expr LEVEL "+" ->
+              <:expr< DcpuAsm.Expr.pick $e$ >>
             | "["; e = asmexpr LEVEL "+"; "]" ->
-              <:expr< DcpuAsm.AsmExpr__.mem $e$ >>
+              <:expr< DcpuAsm.Expr.mem $e$ >>
             | "[%"; e = asmexpr0 LEVEL "+"; "]" ->
-              <:expr< DcpuAsm.AsmExpr__.mem $e$ >>
+              <:expr< DcpuAsm.Expr.mem $e$ >>
             | "("; e = asmexpr LEVEL "+"; ")" -> <:expr< $e$ >>
             | "(%"; e = asmexpr0 LEVEL "+"; ")" -> <:expr< $e$ >>
             | "#"; e = expr LEVEL "simple" -> <:expr< $e$ >>
-            | "_" -> <:expr< DcpuAsm.AsmExpr__.blank >>
-            | i = val_longident -> <:expr< DcpuAsm.AsmExpr__.imm $id:i$ >>
+            | "_" -> <:expr< DcpuAsm.Expr.blank >>
+            | i = val_longident -> <:expr< DcpuAsm.Expr.imm $id:i$ >>
             ]
         |
             "simple" NONA
             [ l = asmlabel -> <:expr< $l$ >> (* CAUTION! *)
             | r = asmreg -> <:expr< $r$ >>
-            | "PC" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.PC >>
-            | "SP" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.SP >>
-            | "O" -> <:expr< DcpuAsm.AsmExpr__.reg DcpuAsm.O >>
-            | "PUSH" -> <:expr< DcpuAsm.AsmExpr__.push >>
-            | "PEEK" -> <:expr< DcpuAsm.AsmExpr__.peek >>
-            | "POP" -> <:expr< DcpuAsm.AsmExpr__.pop >>
+            | "PC" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.PC >>
+            | "EX" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.EX >>
+            | "O" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.EX >> (* compat. *)
+            | "IA" -> <:expr< DcpuAsm.Expr.reg DcpuAsm.IA >>
+            | "PUSH" -> <:expr< DcpuAsm.Expr.push >>
+            | "POP" -> <:expr< DcpuAsm.Expr.pop >>
+            | "PEEK" -> <:expr< DcpuAsm.Expr.peek >>
+            | "NEXT" -> <:expr< DcpuAsm.Expr.next >>
             | "VAL"; e = expr LEVEL "simple" ->
-              <:expr< DcpuAsm.AsmExpr__.imm $e$ >>
+              <:expr< DcpuAsm.Expr.imm $e$ >>
             | "STR"; e = expr LEVEL "simple" ->
-              <:expr< DcpuAsm.AsmExpr__.str $e$ >>
+              <:expr< DcpuAsm.Expr.str $e$ >>
             | "PTR"; "["; e = asmexpr LEVEL "+"; "]" ->
-              <:expr< DcpuAsm.AsmExpr__.mem $e$ >>
+              <:expr< DcpuAsm.Expr.mem $e$ >>
             | "PTR"; "[%"; e = asmexpr0 LEVEL "+"; "]" ->
-              <:expr< DcpuAsm.AsmExpr__.mem $e$ >>
+              <:expr< DcpuAsm.Expr.mem $e$ >>
             | "IMM"; "("; e = asmexpr LEVEL "+"; ")" -> <:expr< $e$ >>
             | "IMM"; "(%"; e = asmexpr0 LEVEL "+"; ")" -> <:expr< $e$ >>
             ]
@@ -243,12 +248,12 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         asmdatum:
         [
             [ cnt = asmoperand; "TIMES"; s = a_STRING ->
-              <:expr< DcpuAsm.AsmExpr__.times $cnt$
-                                              (DcpuAsm.AsmExpr__.str $str:s$) >>
+              <:expr< DcpuAsm.Expr.times $cnt$
+                                              (DcpuAsm.Expr.str $str:s$) >>
             | cnt = asmoperand; "TIMES"; e = asmoperand ->
-              <:expr< DcpuAsm.AsmExpr__.times $cnt$ $e$ >>
+              <:expr< DcpuAsm.Expr.times $cnt$ $e$ >>
             | s = a_STRING ->
-              <:expr< DcpuAsm.AsmExpr__.str $str:s$ >>
+              <:expr< DcpuAsm.Expr.str $str:s$ >>
             | e = asmoperand ->
               <:expr< $e$ >>
             ]
@@ -266,70 +271,108 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
         asmstmt:
         [
             [ "DAT"; datum = asmdatum; tail = asmdata ->
-              <:expr< DcpuAsm.Asm__.dat ($datum$ :: $tail$) >>
+              <:expr< DcpuAsm.Stmt.dat ($datum$ :: $tail$) >>
             | "SET"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.set $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.set $a$ $b$ >>
             | "ADD"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.add $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.add $a$ $b$ >>
             | "SUB"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.sub $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.sub $a$ $b$ >>
             | "MUL"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.mul $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.mul $a$ $b$ >>
+            | "MLI"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.mli $a$ $b$ >>
             | "DIV"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.div $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.div $a$ $b$ >>
+            | "DVI"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.dvi $a$ $b$ >>
             | "MOD"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.mod_ $a$ $b$ >>
-            | "SHL"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.shl $a$ $b$ >>
-            | "SHR"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.shr $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.mod_ $a$ $b$ >>
+            | "MDI"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.mdi $a$ $b$ >>
             | "AND"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.and_ $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.and_ $a$ $b$ >>
             | "BOR"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.bor $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.bor $a$ $b$ >>
             | "XOR"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.xor $a$ $b$ >>
-            | "IFE"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.ife $a$ $b$ >>
-            | "IFN"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.ifn $a$ $b$ >>
-            | "IFG"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.ifg $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.xor $a$ $b$ >>
+            | "SHR"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.shr $a$ $b$ >>
+            | "ASR"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.asr_ $a$ $b$ >>
+            | "SHL"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.shl $a$ $b$ >>
             | "IFB"; a = asmoperand; ","; b = asmoperand ->
-              <:expr< DcpuAsm.Asm__.ifb $a$ $b$ >>
+              <:expr< DcpuAsm.Stmt.ifb $a$ $b$ >>
+            | "IFC"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.ifc $a$ $b$ >>
+            | "IFE"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.ife $a$ $b$ >>
+            | "IFN"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.ifn $a$ $b$ >>
+            | "IFG"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.ifg $a$ $b$ >>
+            | "IFA"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.ifa $a$ $b$ >>
+            | "IFL"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.ifl $a$ $b$ >>
+            | "IFU"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.ifu $a$ $b$ >>
+            | "ADX"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.adx $a$ $b$ >>
+            | "SBX"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.sbx $a$ $b$ >>
+            | "STI"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.sti $a$ $b$ >>
+            | "STD"; a = asmoperand; ","; b = asmoperand ->
+              <:expr< DcpuAsm.Stmt.std $a$ $b$ >>
             | "JSR"; a = asmoperand ->
-              <:expr< DcpuAsm.Asm__.jsr $a$ >>
+              <:expr< DcpuAsm.Stmt.jsr $a$ >>
+            | "HCF"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.hcf $a$ >>
+            | "INT"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.int_ $a$ >>
+            | "IAG"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.iag $a$ >>
+            | "IAS"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.ias $a$ >>
+            | "HWN"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.hwn $a$ >>
+            | "HWQ"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.hwq $a$ >>
+            | "HWI"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.hwi $a$ >>
 
             (* various helpers *)
-            | "PASS" -> <:expr< DcpuAsm.Asm__.block [] >>
+            | "PASS" -> <:expr< DcpuAsm.Stmt.block [] >>
             | "ORG"; origin = a_INT ->
               let origin0 = int_of_string origin in
               if origin0 < 0 || origin0 >= 0x10000 then
                   raise (Stream.Error (Printf.sprintf "Invalid origin %#x"
                                                       origin0));
-              <:expr< DcpuAsm.Asm__.org $int:origin$ >>
+              <:expr< DcpuAsm.Stmt.org $int:origin$ >>
             | "ALIGN"; alignment = a_INT ->
               let alignment0 = int_of_string alignment in
               if alignment0 < 1 || alignment0 >= 0x10000 then
                   raise (Stream.Error (Printf.sprintf "Invalid alignment %#x"
                                                       alignment0));
-              <:expr< DcpuAsm.Asm__.align $int:alignment$ >>
-            | "NOP" -> <:expr< DcpuAsm.Asm__.nop >>
-            | "JMP"; a = asmoperand -> <:expr< DcpuAsm.Asm__.jmp $a$ >>
-            | "PUSH"; a = asmoperand -> <:expr< DcpuAsm.Asm__.push $a$ >>
-            | "POP"; a = asmoperand -> <:expr< DcpuAsm.Asm__.pop $a$ >>
-            | "RET" -> <:expr< DcpuAsm.Asm__.ret >>
-            | "BRK" -> <:expr< DcpuAsm.Asm__.brk >>
-            | "HLT" -> <:expr< DcpuAsm.Asm__.hlt >>
+              <:expr< DcpuAsm.Stmt.align $int:alignment$ >>
+            | "NOP" -> <:expr< DcpuAsm.Stmt.nop >>
+            | "JMP"; a = asmoperand -> <:expr< DcpuAsm.Stmt.jmp $a$ >>
+            | "PUSH"; a = asmoperand -> <:expr< DcpuAsm.Stmt.push $a$ >>
+            | "POP"; a = asmoperand -> <:expr< DcpuAsm.Stmt.pop $a$ >>
+            | "RET" -> <:expr< DcpuAsm.Stmt.ret >>
+            | "BRK" -> <:expr< DcpuAsm.Stmt.brk >>
+            | "HLT" -> <:expr< DcpuAsm.Stmt.hlt >>
             ]
         ];
 
         asmlabeled:
         [
             [ l = asmlabelstr; ":"; e = expr LEVEL "top" ->
-              <:expr< DcpuAsm.Asm__.label $l$ $e$ >>
+              <:expr< DcpuAsm.Stmt.label $l$ $e$ >>
             | l = asmlabelstr; ":" ->
-              <:expr< DcpuAsm.Asm__.label $l$ (DcpuAsm.Asm__.block []) >>
+              <:expr< DcpuAsm.Stmt.label $l$ (DcpuAsm.Stmt.block []) >>
             ]
         ];
 
@@ -344,7 +387,7 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
             [ s = asmstmt -> <:expr< $s$ >>
             | ls = TRY [
                 l = asmlabelstr; s = asmstmt ->
-                <:expr< DcpuAsm.Asm__.label $l$ $s$ >>
+                <:expr< DcpuAsm.Stmt.label $l$ $s$ >>
               ] -> <:expr< $ls$ >>
             | "BLOCK"; "LOCAL"; locals = asmlabelstrlist; ss = SELF ->
               <:expr< DcpuAsm.local $locals$ $ss$ >>
@@ -354,7 +397,7 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
               <:expr< DcpuAsm.local $list_of_locally_defined_labels _loc ss$
                                     $ss$ >>
             | "BLOCK"; ss = SELF ->
-              <:expr< DcpuAsm.Asm__.block $ss$ >>
+              <:expr< DcpuAsm.Stmt.block $ss$ >>
             ]
         ];
 

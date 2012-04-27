@@ -6,7 +6,7 @@
 (* Assembly AST. *)
 
 (* DCPU-16 registers. not all of them supports the indexed addressing. *)
-type reg = A | B | C | X | Y | Z | I | J | PC | SP | O
+type reg = A | B | C | X | Y | Z | I | J | PC | SP | EX | IA
 type label = string
 
 val string_of_reg : reg -> string
@@ -37,8 +37,8 @@ type value =
     | Reg of reg
     | MemReg of reg
     | MemRegLit of reg * expr
+    | MemRegNext of reg
     | Pop
-    | Peek
     | Push
     | MemNext
     | Next
@@ -57,18 +57,37 @@ type instr =
     | Add of value * value
     | Sub of value * value
     | Mul of value * value
+    | Mli of value * value
     | Div of value * value
+    | Dvi of value * value
     | Mod of value * value
-    | Shl of value * value
-    | Shr of value * value
+    | Mdi of value * value
     | And of value * value
     | Bor of value * value
     | Xor of value * value
+    | Shr of value * value
+    | Asr of value * value
+    | Shl of value * value
+    | Ifb of value * value
+    | Ifc of value * value
     | Ife of value * value
     | Ifn of value * value
     | Ifg of value * value
-    | Ifb of value * value
+    | Ifa of value * value
+    | Ifl of value * value
+    | Ifu of value * value
+    | Adx of value * value
+    | Sbx of value * value
+    | Sti of value * value
+    | Std of value * value
     | Jsr of value
+    | Hcf of value
+    | Int of value
+    | Iag of value
+    | Ias of value
+    | Hwn of value
+    | Hwq of value
+    | Hwi of value
     | Jmp of value
 
 val string_of_instr : instr -> string
@@ -79,15 +98,17 @@ val string_of_instr : instr -> string
 type asmexpr (* opaque *)
 
 (* internal code generator for pa_dcpuasm *)
-module AsmExpr__ : sig
+module Expr : sig
     val imm   : int -> asmexpr
+    val next  : asmexpr
     val long  : asmexpr -> asmexpr
     val short : asmexpr -> asmexpr
     val str   : string -> asmexpr
     val reg   : reg -> asmexpr
     val push  : asmexpr
-    val peek  : asmexpr
     val pop   : asmexpr
+    val peek  : asmexpr
+    val pick  : asmexpr -> asmexpr
     val label : label -> asmexpr
     val blank : asmexpr
     val mem   : asmexpr -> asmexpr
@@ -122,24 +143,43 @@ type stmt =
 val print_stmt : stmt -> unit
 
 (* internal code generator for pa_dcpuasm *)
-module Asm__ : sig
+module Stmt : sig
     val dat   : asmexpr list -> stmt
     val set   : asmexpr -> asmexpr -> stmt
     val add   : asmexpr -> asmexpr -> stmt
     val sub   : asmexpr -> asmexpr -> stmt
     val mul   : asmexpr -> asmexpr -> stmt
+    val mli   : asmexpr -> asmexpr -> stmt
     val div   : asmexpr -> asmexpr -> stmt
+    val dvi   : asmexpr -> asmexpr -> stmt
     val mod_  : asmexpr -> asmexpr -> stmt
-    val shl   : asmexpr -> asmexpr -> stmt
-    val shr   : asmexpr -> asmexpr -> stmt
+    val mdi   : asmexpr -> asmexpr -> stmt
     val and_  : asmexpr -> asmexpr -> stmt
     val bor   : asmexpr -> asmexpr -> stmt
     val xor   : asmexpr -> asmexpr -> stmt
+    val shr   : asmexpr -> asmexpr -> stmt
+    val asr_  : asmexpr -> asmexpr -> stmt
+    val shl   : asmexpr -> asmexpr -> stmt
+    val ifb   : asmexpr -> asmexpr -> stmt
+    val ifc   : asmexpr -> asmexpr -> stmt
     val ife   : asmexpr -> asmexpr -> stmt
     val ifn   : asmexpr -> asmexpr -> stmt
     val ifg   : asmexpr -> asmexpr -> stmt
-    val ifb   : asmexpr -> asmexpr -> stmt
+    val ifa   : asmexpr -> asmexpr -> stmt
+    val ifl   : asmexpr -> asmexpr -> stmt
+    val ifu   : asmexpr -> asmexpr -> stmt
+    val adx   : asmexpr -> asmexpr -> stmt
+    val sbx   : asmexpr -> asmexpr -> stmt
+    val sti   : asmexpr -> asmexpr -> stmt
+    val std   : asmexpr -> asmexpr -> stmt
     val jsr   : asmexpr -> stmt
+    val hcf   : asmexpr -> stmt
+    val int_  : asmexpr -> stmt
+    val iag   : asmexpr -> stmt
+    val ias   : asmexpr -> stmt
+    val hwn   : asmexpr -> stmt
+    val hwq   : asmexpr -> stmt
+    val hwi   : asmexpr -> stmt
     val label : string -> stmt -> stmt
     val block : stmt list -> stmt
 

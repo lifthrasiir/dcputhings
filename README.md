@@ -49,14 +49,15 @@ By default `ASM` assumes the origin at 0x0000. This can be changed using `ASM
 
 DcpuAsm supports the following instructions (and pseudo-instructions):
 
-* Basic opcodes: `SET`, `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `SHL`, `SHR`,
-  `AND`, `BOR`, `XOR`, `IFE`, `IFN`, `IFG`, `IFB`.
-* Non-basic opcodes: `JSR`
+* Basic opcodes: `SET`, `ADD`, `SUB`, `MUL`, `MLI`, `DIV`, `DVI`, `MOD`, `MDI`,
+  `AND`, `BOR`, `XOR`, `SHR`, `ASR`, `SHL`, `IFB`, `IFC`, `IFE`, `IFN`, `IFG`,
+  `IFA`, `IFL`, `IFU`, `ADX`, `SBX`, `STI`, `STD`.
+* Special opcodes: `JSR`, `HCF`, `INT`, `IAG`, `IAS`, `HWN`, `HWQ`, `HWI`
 * Raw data: `DAT`, `ORG`, `ALIGN`
-* Syntactic extensions: `NOP`, `JMP`, `PUSH`, `POP`, `BRK`/`HLT`, `RET`
+* Syntactic extensions: `NOP`, `JMP`, `PUSH`, `POP`, `RET`, `BRK`, `HLT`
 * Empty opcode (i.e. no output at all): `PASS`
 
-Basic opcodes has two arguments, and non-basic opcodes has one of them.
+Basic opcodes has two arguments, and special opcodes has one of them.
 Multiple arguments are separated with `,` as much like other assemblers.
 
 `DAT` has one or more arguments. The argument can be a typical immediate (see
@@ -88,15 +89,15 @@ cases.) Note that the plain `SET PC, a` won't be optimized; you must
 explicitly use `JMP a` instead.
 
 `PUSH a` is equivalent to `SET PUSH, a`. `POP a` is equivalent to `SET a,
-POP`. You can also use `[SP]` instead of `PEEK`. (But `[SP+<number>]` is still
-invalid.) For these instructions `a` cannot be a stack operand as the
-evaluation order of stack operand is very unintuitive and prone to error.
-
-`BRK` or `HLT` is equivalent to `SUB PC, 1`. This forms a simple infinite
-loop, and used as a *de facto* instruction to terminate the emulator.
+POP`. You can also use `[SP]` instead of `PEEK`, and `[SP+...]` instead of `PICK
+...`.
 
 `RET` is equivalent to `SET PC, POP`, and used for returning from the
 subroutine initiated by `JSR` instruction.
+
+`BRK` is equivalent to `SUB PC, 1`. This forms a simple infinite loop, and used
+as a *de facto* instruction to terminate the emulator. `HLT` was used to be same
+as `BRK`, but now has been replaced with the official `HCF` instruction.
 
 `PASS` does not emit the binary at all; it can be used as a placeholder.
 
@@ -152,8 +153,9 @@ Expression can occur as an instruction's argument. It may contain registers,
 numbers, labels, memory references (enclosed in `[]`) and expressions.
 
 DcpuAsm supports all general and special registers: `A`, `B`, `C`, `X`, `Y`,
-`Z`, `I`, `J`, `SP`, `PC`, `O`. It also supports `PUSH`, `PEEK` and `POP`;
-they cannot be used in the expression.
+`Z`, `I`, `J`, `SP`, `PC`, `EX`, `IA`. (`IA` cannot really be used, but it is
+there for the better error handling.) It also supports `PUSH`, `PEEK`, `POP` and
+`PICK ...`; they cannot be used in the expression.
 
 DcpuAsm supports numbers in base 2 (`0b101`), base 8 (`0o337`), base 10 and
 base 16 (`0x1337`) just like Ocaml. Additionally a character literal (`'A'`)
@@ -216,10 +218,19 @@ expression is simple enough (e.g. a single identifier) then you can omit
 
 DcpuAsm tries to generate the shortest code for given assembly, but you can
 override this behavior by `SHORT` and `LONG` prefixes. `SHORT e` will cause an
-error when `e` does not fit in the range of 0--31, and `LONG e` will generate
-a longer form of given immediate (not the instruction, so should use it twice
-for basic opcodes). This only applies to a literal value; it is silently
-ignored in other kind of values.
+error when `e` does not fit in the range of -1--30 or it is used as a first
+operand (cannot use a short literal there), and `LONG e` will generate a longer
+form of given immediate (not the instruction, so should use it twice for basic
+opcodes). This only applies to a literal value; it is silently ignored in other
+kind of values.
+
+A special value `NEXT` can also be used as a part of an expression. It won't
+generate the "next words" required for long literals and register-relative
+addressing, so whatever the next instruction is it (or its first word) will be
+the next word. It can be used for simple self-modifying programs in combination
+with `SHORT` (to ensure that the next instruction is always one word long), for
+example. Note that `NEXT` is not canonicalized, so `[A+NEXT*2-NEXT]` (for
+example) is invalid. Only a form of `NEXT`, `[reg+NEXT]`, `[NEXT+reg]` is valid.
 
 ### Blocks
 

@@ -10,19 +10,22 @@ let repeat n l =
             acc
     in recur n (List.rev l) []
 
+let to_short_lit v = (v + 1) land 0xffff
+let is_short_lit v = to_short_lit v < 0x20
+
 (**********************************************************************)
 (* Assembly AST. *)
 
-type reg = A | B | C | X | Y | Z | I | J | PC | SP | O
+type reg = A | B | C | X | Y | Z | I | J | PC | SP | EX | IA
 type label = string
 
 let string_of_reg = function
     | A -> "A" | B -> "B" | C -> "C" | X -> "X" | Y -> "Y" | Z -> "Z"
-    | I -> "I" | J -> "J" | PC -> "PC" | SP -> "SP" | O -> "O"
+    | I -> "I" | J -> "J" | PC -> "PC" | SP -> "SP" | EX -> "EX" | IA -> "IA"
 
 let index_of_reg = function
     | A -> 0 | B -> 1 | C -> 2 | X -> 3 | Y -> 4 | Z -> 5 | I -> 6 | J -> 7
-    | PC | SP | O -> failwith "index_of_reg"
+    | PC | SP | EX | IA -> failwith "index_of_reg"
 
 let gensym prefix =
     let counter = ref (-1) in
@@ -138,8 +141,8 @@ type value =
     | Reg of reg
     | MemReg of reg
     | MemRegLit of reg * expr
+    | MemRegNext of reg
     | Pop
-    | Peek
     | Push
     | MemNext
     | Next
@@ -159,11 +162,12 @@ let string_of_value = function
             "[" ^ string_of_reg r ^ "-" ^ string_of_int (-v) ^ "]"
     | MemRegLit (r, e) ->
         "[" ^ string_of_reg r ^ "+" ^ string_of_expr e ^ "]"
-    | Pop -> "POP"
-    | Peek -> "PEEK"
-    | Push -> "PUSH"
-    | MemNext -> "[<next word>]"
-    | Next -> "<next word>"
+    | MemRegNext r ->
+        "[" ^ string_of_reg r ^ "+NEXT]"
+    | Pop -> "[SP++]"
+    | Push -> "[--SP]"
+    | MemNext -> "[NEXT]"
+    | Next -> "NEXT"
     | MemLit (ENum v) -> "[" ^ string_of_int (v land 0xffff) ^ "]"
     | MemLit e -> "[" ^ string_of_expr e ^ "]"
     | Lit (ENum v) -> string_of_int (v land 0xffff)
@@ -200,18 +204,37 @@ type instr =
     | Add of value * value      (* ADD lhs, rhs *)
     | Sub of value * value      (* SUB lhs, rhs *)
     | Mul of value * value      (* MUL lhs, rhs *)
+    | Mli of value * value      (* MLI lhs, rhs *)
     | Div of value * value      (* DIV lhs, rhs *)
+    | Dvi of value * value      (* DVI lhs, rhs *)
     | Mod of value * value      (* MOD lhs, rhs *)
-    | Shl of value * value      (* SHL lhs, rhs *)
-    | Shr of value * value      (* SHR lhs, rhs *)
+    | Mdi of value * value      (* MDI lhs, rhs *)
     | And of value * value      (* AND lhs, rhs *)
     | Bor of value * value      (* BOR lhs, rhs *)
     | Xor of value * value      (* XOR lhs, rhs *)
+    | Shr of value * value      (* SHR lhs, rhs *)
+    | Asr of value * value      (* ASR lhs, rhs *)
+    | Shl of value * value      (* SHL lhs, rhs *)
+    | Ifb of value * value      (* IFB lhs, rhs *)
+    | Ifc of value * value      (* IFC lhs, rhs *)
     | Ife of value * value      (* IFE lhs, rhs *)
     | Ifn of value * value      (* IFN lhs, rhs *)
     | Ifg of value * value      (* IFG lhs, rhs *)
-    | Ifb of value * value      (* IFB lhs, rhs *)
+    | Ifa of value * value      (* IFA lhs, rhs *)
+    | Ifl of value * value      (* IFL lhs, rhs *)
+    | Ifu of value * value      (* IFU lhs, rhs *)
+    | Adx of value * value      (* ADX lhs, rhs *)
+    | Sbx of value * value      (* SBX lhs, rhs *)
+    | Sti of value * value      (* STI lhs, rhs *)
+    | Std of value * value      (* STD lhs, rhs *)
     | Jsr of value              (* JSR lhs *)
+    | Hcf of value              (* HCF lhs *)
+    | Int of value              (* INT lhs *)
+    | Iag of value              (* IAG lhs *)
+    | Ias of value              (* IAS lhs *)
+    | Hwn of value              (* HWN lhs *)
+    | Hwq of value              (* HWQ lhs *)
+    | Hwi of value              (* HWI lhs *)
     | Jmp of value              (* JMP lhs (pseudo) *)
 
 let string_of_instr =
@@ -227,18 +250,37 @@ let string_of_instr =
     | Add (a,b) -> "ADD " ^ string_of_value a ^ ", " ^ string_of_value b
     | Sub (a,b) -> "SUB " ^ string_of_value a ^ ", " ^ string_of_value b
     | Mul (a,b) -> "MUL " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Mli (a,b) -> "MLI " ^ string_of_value a ^ ", " ^ string_of_value b
     | Div (a,b) -> "DIV " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Dvi (a,b) -> "DVI " ^ string_of_value a ^ ", " ^ string_of_value b
     | Mod (a,b) -> "MOD " ^ string_of_value a ^ ", " ^ string_of_value b
-    | Shl (a,b) -> "SHL " ^ string_of_value a ^ ", " ^ string_of_value b
-    | Shr (a,b) -> "SHR " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Mdi (a,b) -> "MDI " ^ string_of_value a ^ ", " ^ string_of_value b
     | And (a,b) -> "AND " ^ string_of_value a ^ ", " ^ string_of_value b
     | Bor (a,b) -> "BOR " ^ string_of_value a ^ ", " ^ string_of_value b
     | Xor (a,b) -> "XOR " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Shr (a,b) -> "SHR " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Asr (a,b) -> "ASR " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Shl (a,b) -> "SHL " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Ifb (a,b) -> "IFB " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Ifc (a,b) -> "IFC " ^ string_of_value a ^ ", " ^ string_of_value b
     | Ife (a,b) -> "IFE " ^ string_of_value a ^ ", " ^ string_of_value b
     | Ifn (a,b) -> "IFN " ^ string_of_value a ^ ", " ^ string_of_value b
     | Ifg (a,b) -> "IFG " ^ string_of_value a ^ ", " ^ string_of_value b
-    | Ifb (a,b) -> "IFB " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Ifa (a,b) -> "IFA " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Ifl (a,b) -> "IFL " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Ifu (a,b) -> "IFU " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Adx (a,b) -> "ADX " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Sbx (a,b) -> "SBX " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Sti (a,b) -> "STI " ^ string_of_value a ^ ", " ^ string_of_value b
+    | Std (a,b) -> "STD " ^ string_of_value a ^ ", " ^ string_of_value b
     | Jsr a -> "JSR " ^ string_of_value a
+    | Hcf a -> "HCF " ^ string_of_value a
+    | Int a -> "INT " ^ string_of_value a
+    | Iag a -> "IAG " ^ string_of_value a
+    | Ias a -> "IAS " ^ string_of_value a
+    | Hwn a -> "HWN " ^ string_of_value a
+    | Hwq a -> "HWQ " ^ string_of_value a
+    | Hwi a -> "HWI " ^ string_of_value a
     | Jmp a -> "JMP " ^ string_of_value a
 
 let force_instr force =
@@ -250,18 +292,37 @@ let force_instr force =
     | Add (a,b) -> Add (force a, force b)
     | Sub (a,b) -> Sub (force a, force b)
     | Mul (a,b) -> Mul (force a, force b)
+    | Mli (a,b) -> Mli (force a, force b)
     | Div (a,b) -> Div (force a, force b)
+    | Dvi (a,b) -> Dvi (force a, force b)
     | Mod (a,b) -> Mod (force a, force b)
-    | Shl (a,b) -> Shl (force a, force b)
-    | Shr (a,b) -> Shr (force a, force b)
+    | Mdi (a,b) -> Mdi (force a, force b)
     | And (a,b) -> And (force a, force b)
     | Bor (a,b) -> Bor (force a, force b)
     | Xor (a,b) -> Xor (force a, force b)
+    | Shr (a,b) -> Shr (force a, force b)
+    | Asr (a,b) -> Asr (force a, force b)
+    | Shl (a,b) -> Shl (force a, force b)
+    | Ifb (a,b) -> Ifb (force a, force b)
+    | Ifc (a,b) -> Ifc (force a, force b)
     | Ife (a,b) -> Ife (force a, force b)
     | Ifn (a,b) -> Ifn (force a, force b)
     | Ifg (a,b) -> Ifg (force a, force b)
-    | Ifb (a,b) -> Ifb (force a, force b)
+    | Ifa (a,b) -> Ifa (force a, force b)
+    | Ifl (a,b) -> Ifl (force a, force b)
+    | Ifu (a,b) -> Ifu (force a, force b)
+    | Adx (a,b) -> Adx (force a, force b)
+    | Sbx (a,b) -> Sbx (force a, force b)
+    | Sti (a,b) -> Sti (force a, force b)
+    | Std (a,b) -> Std (force a, force b)
     | Jsr a -> Jsr (force a)
+    | Hcf a -> Hcf (force a)
+    | Int a -> Int (force a)
+    | Iag a -> Iag (force a)
+    | Ias a -> Ias (force a)
+    | Hwn a -> Hwn (force a)
+    | Hwq a -> Hwq (force a)
+    | Hwi a -> Hwi (force a)
     | Jmp a -> Jmp (force a)
 
 let force_shorter_instr = force_instr force_shorter_value
@@ -278,25 +339,44 @@ let eval_instr resolve =
     | Add (a,b) -> Add (evalv a, evalv b)
     | Sub (a,b) -> Sub (evalv a, evalv b)
     | Mul (a,b) -> Mul (evalv a, evalv b)
+    | Mli (a,b) -> Mli (evalv a, evalv b)
     | Div (a,b) -> Div (evalv a, evalv b)
+    | Dvi (a,b) -> Dvi (evalv a, evalv b)
     | Mod (a,b) -> Mod (evalv a, evalv b)
-    | Shl (a,b) -> Shl (evalv a, evalv b)
-    | Shr (a,b) -> Shr (evalv a, evalv b)
+    | Mdi (a,b) -> Mdi (evalv a, evalv b)
     | And (a,b) -> And (evalv a, evalv b)
     | Bor (a,b) -> Bor (evalv a, evalv b)
     | Xor (a,b) -> Xor (evalv a, evalv b)
+    | Shr (a,b) -> Shr (evalv a, evalv b)
+    | Asr (a,b) -> Asr (evalv a, evalv b)
+    | Shl (a,b) -> Shl (evalv a, evalv b)
+    | Ifb (a,b) -> Ifb (evalv a, evalv b)
+    | Ifc (a,b) -> Ifc (evalv a, evalv b)
     | Ife (a,b) -> Ife (evalv a, evalv b)
     | Ifn (a,b) -> Ifn (evalv a, evalv b)
     | Ifg (a,b) -> Ifg (evalv a, evalv b)
-    | Ifb (a,b) -> Ifb (evalv a, evalv b)
+    | Ifa (a,b) -> Ifa (evalv a, evalv b)
+    | Ifl (a,b) -> Ifl (evalv a, evalv b)
+    | Ifu (a,b) -> Ifu (evalv a, evalv b)
+    | Adx (a,b) -> Adx (evalv a, evalv b)
+    | Sbx (a,b) -> Sbx (evalv a, evalv b)
+    | Sti (a,b) -> Sti (evalv a, evalv b)
+    | Std (a,b) -> Std (evalv a, evalv b)
     | Jsr a -> Jsr (evalv a)
+    | Hcf a -> Hcf (evalv a)
+    | Int a -> Int (evalv a)
+    | Iag a -> Iag (evalv a)
+    | Ias a -> Ias (evalv a)
+    | Hwn a -> Hwn (evalv a)
+    | Hwq a -> Hwq (evalv a)
+    | Hwi a -> Hwi (evalv a)
     | Jmp a -> Jmp (evalv a)
 
 let eval_instr_with_pc cur resolve =
     let eval = eval_expr resolve in
 
-    let is_short_literal = function
-        | ENum v -> (v land 0xffff < 32)
+    let is_short_lit_expr = function
+        | ENum v -> is_short_lit v
         | _ -> false in
 
     (* we only convert operands which are short constants (so they cannot
@@ -314,19 +394,19 @@ let eval_instr_with_pc cur resolve =
         let pcminusa = eval (ESub (ENum (cur + 1), e)) in
         let axorpc = eval (EXor (e, ENum (cur + 1))) in
         let a = eval e in
-        if is_short_literal axorpc then
+        if is_short_lit_expr axorpc then
             (* use "XOR PC, ...". the most efficient (1 cycle), useful for
              * short relative jumps. *)
             Xor (Reg PC, convert_to_short axorpc)
-        else if is_short_literal a then
+        else if is_short_lit_expr a then
             (* use "SET PC, ...". if the operand is a short literal then it
              * takes one cycle, but is only applicable for very few labels. *)
             Set (Reg PC, convert_to_short a)
-        else if is_short_literal aminuspc then
+        else if is_short_lit_expr aminuspc then
             (* use "ADD PC, ...". it takes as same number of cycles as
              * SET with e long literal but one word shorter. *)
             Add (Reg PC, convert_to_short aminuspc)
-        else if is_short_literal pcminusa then
+        else if is_short_lit_expr pcminusa then
             (* use "SUB PC, ...". same as "ADD PC, ...". *)
             Sub (Reg PC, convert_to_short pcminusa)
         else
@@ -345,13 +425,15 @@ let eval_instr_with_pc cur resolve =
 
 type asmexpr =
     | AsmImm of int                 (* 42 *)
+    | AsmNext                       (* NEXT *)
     | AsmShort of asmexpr           (* SHORT expr *)
     | AsmLong of asmexpr            (* LONG expr *)
     | AsmStr of string              (* "string" *)
-    | AsmReg of reg                 (* A, B, C, X, Y, Z, I, J, PC, SP, O *)
+    | AsmReg of reg                 (* A, B, C, X, Y, Z, I, J, PC, SP, EX, IA *)
     | AsmPush                       (* [--SP] or PUSH *)
-    | AsmPeek                       (* [SP] or PEEK *)
     | AsmPop                        (* [SP++] or POP *)
+    | AsmPeek                       (* PEEK *)
+    | AsmPick of asmexpr            (* PICK n *)
     | AsmLabel of label             (* %label *)
     | AsmBlank                      (* _ *)
     | AsmTimes of asmexpr * asmexpr (* expr TIMES expr *)
@@ -369,15 +451,17 @@ type asmexpr =
     | AsmShl of asmexpr * asmexpr   (* lhs SHL rhs *)
     | AsmShr of asmexpr * asmexpr   (* lhs SHR rhs *)
 
-module AsmExpr__ = struct
+module Expr = struct
     let imm v      = AsmImm v
+    let next       = AsmNext
     let short e    = AsmShort e
     let long e     = AsmLong e
     let str s      = AsmStr s
     let reg r      = AsmReg r
     let push       = AsmPush
-    let peek       = AsmPeek
     let pop        = AsmPop
+    let peek       = AsmPeek
+    let pick e     = AsmPick e
     let label l    = AsmLabel l
     let blank      = AsmBlank
     let times c e  = AsmTimes (c,e)
@@ -413,7 +497,7 @@ let parse_asmexpr e =
                 let filtered = List.filter (fun (r',c) -> r = r') l in
                 let sum = List.fold_left (+) 0 (List.rev_map snd filtered) in
                 if sum = 0 then [] else [(r,sum)]
-            in List.concat (List.rev_map gather [A;B;C;X;Y;Z;I;J;PC;SP;O])
+            in List.concat (List.rev_map gather [A;B;C;X;Y;Z;I;J;PC;SP;EX;IA])
     in
 
     let selflabel = ref None in
@@ -422,6 +506,7 @@ let parse_asmexpr e =
      * an immediate which may contain labels to be resolved later. *)
     let rec canonicalize = function
         | AsmImm v -> ([], ENum v, false)
+        | AsmNext -> failwith "parse_asmexpr: unexpected NEXT"
         | AsmShort e -> canonicalize e
         | AsmLong e -> canonicalize e
         | AsmStr _ -> failwith "parse_asmexpr: unexpected string"
@@ -437,8 +522,9 @@ let parse_asmexpr e =
         | AsmTimes _ -> failwith "parse_asmexpr: TIMES can only be used in DAT"
         | AsmMem e -> failwith "parse_asmexpr: nested memory reference"
         | AsmPop -> failwith "parse_asmexpr: unexpected POP"
-        | AsmPeek -> failwith "parse_asmexpr: unexpected PEEK"
         | AsmPush -> failwith "parse_asmexpr: unexpected PUSH"
+        | AsmPeek -> failwith "parse_asmexpr: unexpected PEEK"
+        | AsmPick e -> failwith "parse_asmexpr: unexpected PICK"
 
         (* a basic bit of constant propagation. we won't do the AST rotation
          * here, just make sure that we properly handle the linear combination
@@ -592,18 +678,13 @@ let parse_asmexpr e =
                 failwith "parse_asmexpr: non-linear register"
     in
 
-    match e with
-    | AsmPush -> (Push, None)
-    | AsmPeek -> (Peek, None)
-    | AsmPop -> (Pop, None)
-    | AsmMem e ->
+    let do_memref e =
         let (regs, e', hasself) = canonicalize e in
         let v =
             match regs, e' with
             | [], imm -> MemLit imm
-            | [((A|B|C|X|Y|Z|I|J) as r, 1)], ENum 0 -> MemReg r
-            | [((A|B|C|X|Y|Z|I|J) as r, 1)], imm -> MemRegLit (r,imm)
-            | [(SP, 1)], ENum 0 -> Peek
+            | [((A|B|C|X|Y|Z|I|J|SP) as r, 1)], ENum 0 -> MemReg r
+            | [((A|B|C|X|Y|Z|I|J|SP) as r, 1)], imm -> MemRegLit (r,imm)
             | [(r, 1)], imm ->
                 failwith ("parse_asmexpr: unsupported register " ^
                           string_of_reg r ^ " in memory reference")
@@ -613,6 +694,19 @@ let parse_asmexpr e =
             | _, _ ->
                 failwith "parse_asmexpr: multiple registers in memory reference"
         in (v, if hasself then !selflabel else None)
+    in
+
+    match e with
+    | AsmPush -> (Push, None) (* should be checked later *)
+    | AsmPop -> (Pop, None) (* should be checked later *)
+    | AsmNext -> (Next, None)
+    | AsmMem AsmNext -> (MemNext, None)
+    | AsmMem (AsmAdd (AsmReg ((A|B|C|X|Y|Z|I|J|SP) as r), AsmNext))
+    | AsmMem (AsmAdd (AsmNext, AsmReg ((A|B|C|X|Y|Z|I|J|SP) as r))) ->
+        (MemRegNext r, None)
+    | AsmPeek -> do_memref (AsmMem (AsmReg SP))
+    | AsmPick e -> do_memref (AsmMem (AsmAdd (AsmReg SP, e)))
+    | AsmMem e -> do_memref e
     | e ->
         let (regs, e', hasself) = canonicalize e in
         let v =
@@ -666,29 +760,43 @@ type compile_result =
     | DoneEmpty of int
     | NotYet of int * int       (* min length, max length *)
 
-let compile_value = function
+let compile_value is_a = function
     | Reg SP -> Done [27]
     | Reg PC -> Done [28]
-    | Reg O -> Done [29]
+    | Reg EX -> Done [29]
     | Reg r -> Done [index_of_reg r]
+    | MemReg SP -> Done [25]
     | MemReg r -> Done [index_of_reg r + 8]
+    | MemRegLit (SP, ENum v) -> Done [26; v land 0xffff]
     | MemRegLit (r, ENum v) -> Done [index_of_reg r + 16; v land 0xffff]
     | MemRegLit (r, e) -> NotYet (1, 1)
-    | Pop -> Done [24]
-    | Peek -> Done [25]
-    | Push -> Done [26]
+    | MemRegNext SP -> Done [26]
+    | MemRegNext r -> Done [index_of_reg r + 16]
+    | Pop ->
+        if is_a then
+            Done [24]
+        else
+            failwith "compile_value: POP cannot be used as a first operand"
+    | Push ->
+        if is_a then
+            failwith "compile_value: PUSH cannot be used as a first operand"
+        else
+            Done [24]
     | MemNext -> Done [30]
     | Next -> Done [31]
     | MemLit (ENum v) -> Done [30; v land 0xffff]
     | MemLit e -> NotYet (1, 1)
     | Lit (ENum v) ->
         let v = v land 0xffff in
-        if v < 32 then Done [32 + v] else Done [31; v]
+        if is_a && is_short_lit v then
+            Done [32 + to_short_lit v]
+        else
+            Done [31; v]
     | Lit e -> NotYet (0, 1)
     | LitShort (ENum v) ->
         let v = v land 0xffff in
-        if v < 32 then
-            Done [32 + v]
+        if is_a && is_short_lit v then
+            Done [32 + to_short_lit v]
         else
             failwith "compile_value: failed to satisfy SHORT constraint"
     | LitShort e -> NotYet (0, 0)
@@ -697,33 +805,33 @@ let compile_value = function
 
 let compile_instr =
     let unary o a =
-        match compile_value a with
+        match compile_value true a with
         | Done [] -> failwith "impossible"
-        | Done (a::anext) -> Done ((a lsl 10) lor (o lsl 4) :: anext)
+        | Done (a::anext) -> Done ((a lsl 10) lor (o lsl 5) :: anext)
         | DoneEmpty _ -> failwith "impossible"
         | NotYet (amin,amax) -> NotYet (1+amin, 1+amax)
     in
 
-    let binary o a b =
-        match compile_value a, compile_value b with
+    let binary o b a =
+        match compile_value false b, compile_value true a with
         | Done [], _ | _, Done [] -> failwith "impossible"
-        | Done (a::anext), Done (b::bnext) ->
-            Done ((b lsl 10) lor (a lsl 4) lor o :: anext @ bnext)
-        | Done (_::anext), NotYet (bmin,bmax) ->
-            let alen = List.length anext in
-            NotYet (1+alen+bmin, 1+alen+bmax)
-        | DoneEmpty _, _ | _, DoneEmpty _ -> failwith "impossible"
-        | NotYet (amin,amax), Done (_::bnext) ->
+        | Done (b::bnext), Done (a::anext) ->
+            Done ((a lsl 10) lor (b lsl 5) lor o :: bnext @ anext)
+        | Done (_::bnext), NotYet (amin,amax) ->
             let blen = List.length bnext in
-            NotYet (1+amin+blen, 1+amax+blen)
-        | NotYet (amin,amax), NotYet (bmin,bmax) ->
-            NotYet (1+amin+bmin, 1+amax+bmax)
+            NotYet (1+blen+amin, 1+blen+amax)
+        | DoneEmpty _, _ | _, DoneEmpty _ -> failwith "impossible"
+        | NotYet (bmin,bmax), Done (_::anext) ->
+            let alen = List.length anext in
+            NotYet (1+bmin+alen, 1+bmax+alen)
+        | NotYet (bmin,bmax), NotYet (amin,amax) ->
+            NotYet (1+bmin+amin, 1+bmax+amax)
     in
 
     let jump a =
-        match compile_value a with
+        match compile_value true a with
         | Done [] -> failwith "impossible"
-        | Done (a::anext) -> Done ((a lsl 10) lor 0x01c1 :: anext)
+        | Done (a::anext) -> Done ((a lsl 10) lor 0x0381 :: anext)
         | DoneEmpty _ -> failwith "impossible"
         | NotYet (amin,amax) -> NotYet (max 1 amin, 1+amax)
     in
@@ -752,18 +860,37 @@ let compile_instr =
     | Add (a,b) -> binary  2 a b
     | Sub (a,b) -> binary  3 a b
     | Mul (a,b) -> binary  4 a b
-    | Div (a,b) -> binary  5 a b
-    | Mod (a,b) -> binary  6 a b
-    | Shl (a,b) -> binary  7 a b
-    | Shr (a,b) -> binary  8 a b
-    | And (a,b) -> binary  9 a b
-    | Bor (a,b) -> binary 10 a b
-    | Xor (a,b) -> binary 11 a b
-    | Ife (a,b) -> binary 12 a b
-    | Ifn (a,b) -> binary 13 a b
-    | Ifg (a,b) -> binary 14 a b
-    | Ifb (a,b) -> binary 15 a b
+    | Mli (a,b) -> binary  5 a b
+    | Div (a,b) -> binary  6 a b
+    | Dvi (a,b) -> binary  7 a b
+    | Mod (a,b) -> binary  8 a b
+    | Mdi (a,b) -> binary  9 a b
+    | And (a,b) -> binary 10 a b
+    | Bor (a,b) -> binary 11 a b
+    | Xor (a,b) -> binary 12 a b
+    | Shr (a,b) -> binary 13 a b
+    | Asr (a,b) -> binary 14 a b
+    | Shl (a,b) -> binary 15 a b
+    | Ifb (a,b) -> binary 16 a b
+    | Ifc (a,b) -> binary 17 a b
+    | Ife (a,b) -> binary 18 a b
+    | Ifn (a,b) -> binary 19 a b
+    | Ifg (a,b) -> binary 20 a b
+    | Ifa (a,b) -> binary 21 a b
+    | Ifl (a,b) -> binary 22 a b
+    | Ifu (a,b) -> binary 23 a b
+    | Adx (a,b) -> binary 26 a b
+    | Sbx (a,b) -> binary 27 a b
+    | Sti (a,b) -> binary 30 a b
+    | Std (a,b) -> binary 31 a b
     | Jsr a     -> unary   1 a
+    | Hcf a     -> unary   7 a
+    | Int a     -> unary   8 a
+    | Iag a     -> unary   9 a
+    | Ias a     -> unary  10 a
+    | Hwn a     -> unary  16 a
+    | Hwq a     -> unary  17 a
+    | Hwi a     -> unary  18 a
     | Jmp a     -> jump      a
 
 let attach_label l0 s =
@@ -788,7 +915,7 @@ let make_binary_instr f a b =
     let s = make_instr (f a b) in
     attach_label aself (attach_label bself s)
 
-module Asm__ = struct
+module Stmt = struct
     let dat l =
         let rec do_one = function
             | AsmStr s ->
@@ -833,22 +960,41 @@ module Asm__ = struct
         | [a] -> do_one a
         | l -> Blocked (List.map do_one l)
 
-    let set  = make_binary_instr (fun a b -> Set (a,b))
-    let add  = make_binary_instr (fun a b -> Add (a,b))
-    let sub  = make_binary_instr (fun a b -> Sub (a,b))
-    let mul  = make_binary_instr (fun a b -> Mul (a,b))
-    let div  = make_binary_instr (fun a b -> Div (a,b))
-    let mod_ = make_binary_instr (fun a b -> Mod (a,b))
-    let shl  = make_binary_instr (fun a b -> Shl (a,b))
-    let shr  = make_binary_instr (fun a b -> Shr (a,b))
-    let and_ = make_binary_instr (fun a b -> And (a,b))
-    let bor  = make_binary_instr (fun a b -> Bor (a,b))
-    let xor  = make_binary_instr (fun a b -> Xor (a,b))
-    let ife  = make_binary_instr (fun a b -> Ife (a,b))
-    let ifn  = make_binary_instr (fun a b -> Ifn (a,b))
-    let ifg  = make_binary_instr (fun a b -> Ifg (a,b))
-    let ifb  = make_binary_instr (fun a b -> Ifb (a,b))
-    let jsr  = make_unary_instr  (fun a   -> Jsr a)
+    let set  = make_binary_instr (fun b a -> Set (b,a))
+    let add  = make_binary_instr (fun b a -> Add (b,a))
+    let sub  = make_binary_instr (fun b a -> Sub (b,a))
+    let mul  = make_binary_instr (fun b a -> Mul (b,a))
+    let mli  = make_binary_instr (fun b a -> Mli (b,a))
+    let div  = make_binary_instr (fun b a -> Div (b,a))
+    let dvi  = make_binary_instr (fun b a -> Dvi (b,a))
+    let mod_ = make_binary_instr (fun b a -> Mod (b,a))
+    let mdi  = make_binary_instr (fun b a -> Mdi (b,a))
+    let and_ = make_binary_instr (fun b a -> And (b,a))
+    let bor  = make_binary_instr (fun b a -> Bor (b,a))
+    let xor  = make_binary_instr (fun b a -> Xor (b,a))
+    let shr  = make_binary_instr (fun b a -> Shr (b,a))
+    let asr_ = make_binary_instr (fun b a -> Asr (b,a))
+    let shl  = make_binary_instr (fun b a -> Shl (b,a))
+    let ifb  = make_binary_instr (fun b a -> Ifb (b,a))
+    let ifc  = make_binary_instr (fun b a -> Ifc (b,a))
+    let ife  = make_binary_instr (fun b a -> Ife (b,a))
+    let ifn  = make_binary_instr (fun b a -> Ifn (b,a))
+    let ifg  = make_binary_instr (fun b a -> Ifg (b,a))
+    let ifa  = make_binary_instr (fun b a -> Ifa (b,a))
+    let ifl  = make_binary_instr (fun b a -> Ifl (b,a))
+    let ifu  = make_binary_instr (fun b a -> Ifu (b,a))
+    let adx  = make_binary_instr (fun b a -> Adx (b,a))
+    let sbx  = make_binary_instr (fun b a -> Sbx (b,a))
+    let sti  = make_binary_instr (fun b a -> Sti (b,a))
+    let std  = make_binary_instr (fun b a -> Std (b,a))
+    let jsr  = make_unary_instr  (fun   a -> Jsr (  a))
+    let hcf  = make_unary_instr  (fun   a -> Hcf (  a))
+    let int_ = make_unary_instr  (fun   a -> Int (  a))
+    let iag  = make_unary_instr  (fun   a -> Iag (  a))
+    let ias  = make_unary_instr  (fun   a -> Ias (  a))
+    let hwn  = make_unary_instr  (fun   a -> Hwn (  a))
+    let hwq  = make_unary_instr  (fun   a -> Hwq (  a))
+    let hwi  = make_unary_instr  (fun   a -> Hwi (  a))
 
     let label l s = Labeled (l,s)
 
@@ -877,28 +1023,18 @@ module Asm__ = struct
                                     ENum v)),
                          0, v - 1))
 
-    let nop = Static [0x0001] (* SET A, A *)
+    let nop = make_instr (Set (Reg A, Reg A)) (* SET A, A *)
     let jmp = make_unary_instr (fun a -> Jmp a)
 
     let is_stack_operand = function
         | AsmPush | AsmPeek | AsmPop -> true
         | _ -> false
 
-    let push a =
-        if is_stack_operand a then
-            failwith "PUSH with a stack operand will act in an unexpected way; \
-                      use \"SET PUSH, <operand>\" if you really want it.";
-        make_unary_instr (fun a -> Set (Push, a)) a
-
-    let pop a =
-        if is_stack_operand a then
-            failwith "POP with a stack operand will act in an unexpected way; \
-                      use \"SET <operand>, POP\" if you really want it.";
-        make_unary_instr (fun a -> Set (Push, a)) a
-
-    let ret = Static [0x61c1] (* SET PC, POP *)
-    let brk = Static [0x85c3] (* SUB PC, 1 *)
-    let hlt = Static [0x85c3] (* SUB PC, 1 *)
+    let push a = make_unary_instr (fun a -> Set (Push, a)) a (* SET PUSH, .. *)
+    let pop a = make_unary_instr (fun a -> Set (Push, a)) a (* SET .., POP *)
+    let ret = make_instr (Set (Reg PC, Pop)) (* SET PC, POP *)
+    let brk = make_instr (Sub (Reg PC, Lit (ENum 1))) (* SUB PC, 1 *)
+    let hlt = make_instr (Hcf (Lit (ENum 0))) (* HCF 0 (used to be SUB PC, 1) *)
 end
 
 (**********************************************************************)

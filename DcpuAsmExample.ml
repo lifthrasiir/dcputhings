@@ -355,6 +355,27 @@ hexdump_asm "Immediate expressions and DAT extensions" [
 %datend:
 ];;
 
+hexdump_asm "Using NEXT for simple self-modifying codes" [
+    SET A, %puthere;
+    SET [A], NEXT;              (* will replace %puthere below *)
+       MUL X, SHORT 3;          (* a part of above instruction, not a separate
+                                 * instruction. uses SHORT to ensure that it
+                                 * will fit in one word. *)
+    SET X, 0;
+    JSR %foo;
+    JSR %foo;
+    (* X should be (50*3+15)*3+15 = 510. *)
+    HLT;
+
+%foo:
+    IFE X, 0;
+       SET X, 50;
+%puthere:
+    HLT;
+    ADD X, 15;
+    RET;
+];;
+
 hexdump_asm "TIMES prefix and ORG/ALIGN extensions" [
     DAT 3 TIMES 1;                  (* = DAT 1, 1, 1 *)
     DAT (1+1) TIMES "123";          (* = DAT "123", "123" *)
@@ -383,11 +404,11 @@ hexdump_asm ~origin:0x0136 "SHORT/LONG immediates, non-zero origin" [
     SET [%code], 3 + 4;         (* this will not emit an additional word. *)
     SET A, LONG %code;          (* if the immediate does not fit in a value
                                  * LONG is redundant. *)
-    SET A, SHORT %_ - 286;      (* this will cause an error if the operand
-                                 * does not fit in 0--31 range. *)
-    SET A, SHORT %_ - 286;
+    SET A, SHORT %_ - 287;      (* this will cause an error if the operand
+                                 * does not fit in -1--30 range. *)
+    SET A, SHORT %_ - 287;
     (*
-    SET A, SHORT %_ - 286;      (* this one will err when uncommented. *)
+    SET A, SHORT %_ - 287;      (* this one will err when uncommented. *)
     *)
 ];;
 
