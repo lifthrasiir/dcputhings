@@ -1034,7 +1034,7 @@ module Stmt = struct
     let pop a = make_unary_instr (fun a -> Set (Push, a)) a (* SET .., POP *)
     let ret = make_instr (Set (Reg PC, Pop)) (* SET PC, POP *)
     let brk = make_instr (Sub (Reg PC, Lit (ENum 1))) (* SUB PC, 1 *)
-    let hlt = make_instr (Hcf (Lit (ENum 0))) (* HCF 0 (used to be SUB PC, 1) *)
+    let hlt = make_instr (Sub (Reg PC, Lit (ENum 1))) (* SUB PC, 1 *)
 end
 
 (**********************************************************************)

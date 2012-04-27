@@ -95,9 +95,8 @@ POP`. You can also use `[SP]` instead of `PEEK`, and `[SP+...]` instead of `PICK
 `RET` is equivalent to `SET PC, POP`, and used for returning from the
 subroutine initiated by `JSR` instruction.
 
-`BRK` is equivalent to `SUB PC, 1`. This forms a simple infinite loop, and used
-as a *de facto* instruction to terminate the emulator. `HLT` was used to be same
-as `BRK`, but now has been replaced with the official `HCF` instruction.
+`BRK` and `HLT` are equivalent to `SUB PC, 1`. This forms a simple infinite
+loop, and used as a *de facto* instruction to terminate the emulator.
 
 `PASS` does not emit the binary at all; it can be used as a placeholder.
 
