@@ -232,6 +232,8 @@ type instr =
     | Int of value              (* INT lhs *)
     | Iag of value              (* IAG lhs *)
     | Ias of value              (* IAS lhs *)
+    | Iap of value              (* IAP lhs *)
+    | Iaq of value              (* IAQ lhs *)
     | Hwn of value              (* HWN lhs *)
     | Hwq of value              (* HWQ lhs *)
     | Hwi of value              (* HWI lhs *)
@@ -278,6 +280,8 @@ let string_of_instr =
     | Int a -> "INT " ^ string_of_value a
     | Iag a -> "IAG " ^ string_of_value a
     | Ias a -> "IAS " ^ string_of_value a
+    | Iap a -> "IAP " ^ string_of_value a
+    | Iaq a -> "IAQ " ^ string_of_value a
     | Hwn a -> "HWN " ^ string_of_value a
     | Hwq a -> "HWQ " ^ string_of_value a
     | Hwi a -> "HWI " ^ string_of_value a
@@ -320,6 +324,8 @@ let force_instr force =
     | Int a -> Int (force a)
     | Iag a -> Iag (force a)
     | Ias a -> Ias (force a)
+    | Iap a -> Iap (force a)
+    | Iaq a -> Iaq (force a)
     | Hwn a -> Hwn (force a)
     | Hwq a -> Hwq (force a)
     | Hwi a -> Hwi (force a)
@@ -367,6 +373,8 @@ let eval_instr resolve =
     | Int a -> Int (evalv a)
     | Iag a -> Iag (evalv a)
     | Ias a -> Ias (evalv a)
+    | Iap a -> Iap (evalv a)
+    | Iaq a -> Iaq (evalv a)
     | Hwn a -> Hwn (evalv a)
     | Hwq a -> Hwq (evalv a)
     | Hwi a -> Hwi (evalv a)
@@ -888,6 +896,8 @@ let compile_instr =
     | Int a     -> unary   8 a
     | Iag a     -> unary   9 a
     | Ias a     -> unary  10 a
+    | Iap a     -> unary  11 a
+    | Iaq a     -> unary  12 a
     | Hwn a     -> unary  16 a
     | Hwq a     -> unary  17 a
     | Hwi a     -> unary  18 a
@@ -992,6 +1002,8 @@ module Stmt = struct
     let int_ = make_unary_instr  (fun   a -> Int (  a))
     let iag  = make_unary_instr  (fun   a -> Iag (  a))
     let ias  = make_unary_instr  (fun   a -> Ias (  a))
+    let iap  = make_unary_instr  (fun   a -> Iap (  a))
+    let iaq  = make_unary_instr  (fun   a -> Iaq (  a))
     let hwn  = make_unary_instr  (fun   a -> Hwn (  a))
     let hwq  = make_unary_instr  (fun   a -> Hwq (  a))
     let hwi  = make_unary_instr  (fun   a -> Hwi (  a))

@@ -35,7 +35,7 @@ dcpucaml-clean:
 	@rm -f *.cmo *.cmi dcpuasmexample
 
 pa_dcpuasm.cmo: pa_dcpuasm.ml
-	$(OCAMLC) dynlink.cma -I +camlp4 camlp4lib.cma -pp camlp4of.opt $<
+	$(OCAMLC) -c dynlink.cma -I +camlp4 camlp4lib.cma -pp camlp4of.opt $<
 
 # huh, homebrew ocaml kettle does not contain dynlink.cmxa?
 #pa_dcpuasm.cmx: pa_dcpuasm.ml
@@ -45,12 +45,12 @@ dcpuasmexample: DcpuAsmExample.cmo DcpuAsm.cmo pa_dcpuasm.cmo
 	$(OCAMLC) $(DCPUASM) $< -o $@
 
 DcpuAsm.cmo: DcpuAsm.ml DcpuAsm.cmi pa_dcpuasm.cmo
-	$(OCAMLC) $<
+	$(OCAMLC) -c $<
 DcpuAsm.cmi: DcpuAsm.mli pa_dcpuasm.cmo
-	$(OCAMLC) $<
+	$(OCAMLC) -c $<
 
 %.cmo: %.ml
-	$(OCAMLC) -pp 'camlp4o -parser $(PA_DCPUASM)' $(DCPUASM) $<
+	$(OCAMLC) -c -pp 'camlp4o -parser $(PA_DCPUASM)' $(DCPUASM) $<
 %.cmi: %.mli
-	$(OCAMLC) -pp 'camlp4o -parser $(PA_DCPUASM)' $(DCPUASM) $<
+	$(OCAMLC) -c -pp 'camlp4o -parser $(PA_DCPUASM)' $(DCPUASM) $<
 

@@ -51,8 +51,9 @@ DcpuAsm supports the following instructions (and pseudo-instructions):
 
 * Basic opcodes: `SET`, `ADD`, `SUB`, `MUL`, `MLI`, `DIV`, `DVI`, `MOD`, `MDI`,
   `AND`, `BOR`, `XOR`, `SHR`, `ASR`, `SHL`, `IFB`, `IFC`, `IFE`, `IFN`, `IFG`,
-  `IFA`, `IFL`, `IFU`, `ADX`, `SBX`, `STI`, `STD`.
-* Special opcodes: `JSR`, `HCF`, `INT`, `IAG`, `IAS`, `HWN`, `HWQ`, `HWI`
+  `IFA`, `IFL`, `IFU`, `ADX`, `SBX`, `STI`, `STD`
+* Special opcodes: `JSR`, `HCF`, `INT`, `IAG`, `IAS`, `IAP`, `IAQ`, `HWN`,
+  `HWQ`, `HWI`
 * Raw data: `DAT`, `ORG`, `ALIGN`
 * Syntactic extensions: `NOP`, `JMP`, `PUSH`, `POP`, `RET`, `BRK`, `HLT`
 * Empty opcode (i.e. no output at all): `PASS`

@@ -336,6 +336,10 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
               <:expr< DcpuAsm.Stmt.iag $a$ >>
             | "IAS"; a = asmoperand ->
               <:expr< DcpuAsm.Stmt.ias $a$ >>
+            | "IAP"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.iap $a$ >>
+            | "IAQ"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.iaq $a$ >>
             | "HWN"; a = asmoperand ->
               <:expr< DcpuAsm.Stmt.hwn $a$ >>
             | "HWQ"; a = asmoperand ->

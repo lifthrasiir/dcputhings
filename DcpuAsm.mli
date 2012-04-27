@@ -85,6 +85,8 @@ type instr =
     | Int of value
     | Iag of value
     | Ias of value
+    | Iap of value
+    | Iaq of value
     | Hwn of value
     | Hwq of value
     | Hwi of value
@@ -177,6 +179,8 @@ module Stmt : sig
     val int_  : asmexpr -> stmt
     val iag   : asmexpr -> stmt
     val ias   : asmexpr -> stmt
+    val iap   : asmexpr -> stmt
+    val iaq   : asmexpr -> stmt
     val hwn   : asmexpr -> stmt
     val hwq   : asmexpr -> stmt
     val hwi   : asmexpr -> stmt
