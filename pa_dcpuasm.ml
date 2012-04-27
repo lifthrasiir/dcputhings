@@ -328,16 +328,14 @@ module Make (Syntax : Sig.Camlp4Syntax) = struct
               <:expr< DcpuAsm.Stmt.std $a$ $b$ >>
             | "JSR"; a = asmoperand ->
               <:expr< DcpuAsm.Stmt.jsr $a$ >>
-            | "HCF"; a = asmoperand ->
-              <:expr< DcpuAsm.Stmt.hcf $a$ >>
             | "INT"; a = asmoperand ->
               <:expr< DcpuAsm.Stmt.int_ $a$ >>
             | "IAG"; a = asmoperand ->
               <:expr< DcpuAsm.Stmt.iag $a$ >>
             | "IAS"; a = asmoperand ->
               <:expr< DcpuAsm.Stmt.ias $a$ >>
-            | "IAP"; a = asmoperand ->
-              <:expr< DcpuAsm.Stmt.iap $a$ >>
+            | "RFI"; a = asmoperand ->
+              <:expr< DcpuAsm.Stmt.rfi $a$ >>
             | "IAQ"; a = asmoperand ->
               <:expr< DcpuAsm.Stmt.iaq $a$ >>
             | "HWN"; a = asmoperand ->

@@ -228,11 +228,10 @@ type instr =
     | Sti of value * value      (* STI lhs, rhs *)
     | Std of value * value      (* STD lhs, rhs *)
     | Jsr of value              (* JSR lhs *)
-    | Hcf of value              (* HCF lhs *)
     | Int of value              (* INT lhs *)
     | Iag of value              (* IAG lhs *)
     | Ias of value              (* IAS lhs *)
-    | Iap of value              (* IAP lhs *)
+    | Rfi of value              (* RFI lhs *)
     | Iaq of value              (* IAQ lhs *)
     | Hwn of value              (* HWN lhs *)
     | Hwq of value              (* HWQ lhs *)
@@ -276,11 +275,10 @@ let string_of_instr =
     | Sti (a,b) -> "STI " ^ string_of_value a ^ ", " ^ string_of_value b
     | Std (a,b) -> "STD " ^ string_of_value a ^ ", " ^ string_of_value b
     | Jsr a -> "JSR " ^ string_of_value a
-    | Hcf a -> "HCF " ^ string_of_value a
     | Int a -> "INT " ^ string_of_value a
     | Iag a -> "IAG " ^ string_of_value a
     | Ias a -> "IAS " ^ string_of_value a
-    | Iap a -> "IAP " ^ string_of_value a
+    | Rfi a -> "RFI " ^ string_of_value a
     | Iaq a -> "IAQ " ^ string_of_value a
     | Hwn a -> "HWN " ^ string_of_value a
     | Hwq a -> "HWQ " ^ string_of_value a
@@ -320,11 +318,10 @@ let force_instr force =
     | Sti (a,b) -> Sti (force a, force b)
     | Std (a,b) -> Std (force a, force b)
     | Jsr a -> Jsr (force a)
-    | Hcf a -> Hcf (force a)
     | Int a -> Int (force a)
     | Iag a -> Iag (force a)
     | Ias a -> Ias (force a)
-    | Iap a -> Iap (force a)
+    | Rfi a -> Rfi (force a)
     | Iaq a -> Iaq (force a)
     | Hwn a -> Hwn (force a)
     | Hwq a -> Hwq (force a)
@@ -369,11 +366,10 @@ let eval_instr resolve =
     | Sti (a,b) -> Sti (evalv a, evalv b)
     | Std (a,b) -> Std (evalv a, evalv b)
     | Jsr a -> Jsr (evalv a)
-    | Hcf a -> Hcf (evalv a)
     | Int a -> Int (evalv a)
     | Iag a -> Iag (evalv a)
     | Ias a -> Ias (evalv a)
-    | Iap a -> Iap (evalv a)
+    | Rfi a -> Rfi (evalv a)
     | Iaq a -> Iaq (evalv a)
     | Hwn a -> Hwn (evalv a)
     | Hwq a -> Hwq (evalv a)
@@ -892,11 +888,10 @@ let compile_instr =
     | Sti (a,b) -> binary 30 a b
     | Std (a,b) -> binary 31 a b
     | Jsr a     -> unary   1 a
-    | Hcf a     -> unary   7 a
     | Int a     -> unary   8 a
     | Iag a     -> unary   9 a
     | Ias a     -> unary  10 a
-    | Iap a     -> unary  11 a
+    | Rfi a     -> unary  11 a
     | Iaq a     -> unary  12 a
     | Hwn a     -> unary  16 a
     | Hwq a     -> unary  17 a
@@ -998,11 +993,10 @@ module Stmt = struct
     let sti  = make_binary_instr (fun b a -> Sti (b,a))
     let std  = make_binary_instr (fun b a -> Std (b,a))
     let jsr  = make_unary_instr  (fun   a -> Jsr (  a))
-    let hcf  = make_unary_instr  (fun   a -> Hcf (  a))
     let int_ = make_unary_instr  (fun   a -> Int (  a))
     let iag  = make_unary_instr  (fun   a -> Iag (  a))
     let ias  = make_unary_instr  (fun   a -> Ias (  a))
-    let iap  = make_unary_instr  (fun   a -> Iap (  a))
+    let rfi  = make_unary_instr  (fun   a -> Rfi (  a))
     let iaq  = make_unary_instr  (fun   a -> Iaq (  a))
     let hwn  = make_unary_instr  (fun   a -> Hwn (  a))
     let hwq  = make_unary_instr  (fun   a -> Hwq (  a))

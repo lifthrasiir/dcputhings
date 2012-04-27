@@ -81,11 +81,10 @@ type instr =
     | Sti of value * value
     | Std of value * value
     | Jsr of value
-    | Hcf of value
     | Int of value
     | Iag of value
     | Ias of value
-    | Iap of value
+    | Rfi of value
     | Iaq of value
     | Hwn of value
     | Hwq of value
@@ -175,11 +174,10 @@ module Stmt : sig
     val sti   : asmexpr -> asmexpr -> stmt
     val std   : asmexpr -> asmexpr -> stmt
     val jsr   : asmexpr -> stmt
-    val hcf   : asmexpr -> stmt
     val int_  : asmexpr -> stmt
     val iag   : asmexpr -> stmt
     val ias   : asmexpr -> stmt
-    val iap   : asmexpr -> stmt
+    val rfi   : asmexpr -> stmt
     val iaq   : asmexpr -> stmt
     val hwn   : asmexpr -> stmt
     val hwq   : asmexpr -> stmt
